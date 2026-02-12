@@ -1,0 +1,20 @@
+app = "doctree-mcp"
+primary_region = "iad"
+
+[build]
+
+[env]
+  PORT = "3100"
+  DOCS_ROOT = "./docs"
+
+[http_service]
+  internal_port = 3100
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
