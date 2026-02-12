@@ -1,0 +1,19 @@
+{
+  "name": "doctree-mcp",
+  "version": "1.0.0",
+  "description": "Agentic document retrieval over markdown — BM25 search + tree navigation via MCP. Inspired by PageIndex and Pagefind.",
+  "type": "module",
+  "scripts": {
+    "serve": "bun run src/server.ts",
+    "serve:http": "bun run src/server-http.ts",
+    "index": "bun run src/cli-index.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
