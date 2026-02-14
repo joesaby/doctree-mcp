@@ -154,6 +154,67 @@ CODE_WEIGHT=1.5      # Code block match boost
 
 See [DESIGN.md](docs/DESIGN.md) for the full scoring tuning guide with per-corpus-type recommendations.
 
+### Glossary (query expansion for abbreviations)
+
+Place a `glossary.json` in your docs root to enable bidirectional query expansion. This maps abbreviations to their full forms so agents can search using either:
+
+```json
+{
+  "SSE": ["server-sent events"],
+  "LGW": ["landing gateway"],
+  "JWT": ["json web token"],
+  "K8s": ["kubernetes"]
+}
+```
+
+Searching for "SSE" will also match "server-sent events" and vice versa. Override the path with `GLOSSARY_PATH=/path/to/glossary.json`.
+
+## Frontmatter Best Practices
+
+For best search quality, add structured metadata to your markdown files:
+
+```yaml
+---
+title: "Descriptive Title (not 'Introduction')"
+description: "One-line summary — gets a 2x weight boost in search ranking"
+tags: [relevant, terms, here]
+type: runbook        # or: guide, reference, procedure, tutorial, architecture
+category: auth       # any domain-specific grouping
+---
+```
+
+### What happens when frontmatter is missing
+
+| Field | Fallback | Notes |
+|-------|----------|-------|
+| `title` | First H1, then filename | Generic titles ("Introduction", "index") are auto-prefixed with parent directory name |
+| `description` | First 200 chars of first section | Explicit descriptions rank 2x better |
+| `type` | Auto-inferred from directory structure | `runbooks/` → runbook, `guides/` → guide, `deploy/` → deployment, etc. |
+| `tags` | None | Must be explicit — no auto-generation |
+
+### Supported auto-inferred types
+
+Directory patterns that auto-generate a `type` facet:
+
+| Directory pattern | Inferred type |
+|------------------|---------------|
+| `runbooks/`, `runbook/` | `runbook` |
+| `guides/`, `guide/` | `guide` |
+| `tutorials/` | `tutorial` |
+| `reference/` | `reference` |
+| `api-docs/`, `apidocs/` | `api-reference` |
+| `architecture/` | `architecture` |
+| `adrs/`, `adr/` | `adr` |
+| `rfcs/` | `rfc` |
+| `procedures/` | `procedure` |
+| `playbooks/` | `playbook` |
+| `troubleshoot*/` | `troubleshooting` |
+| `ops/` | `operations` |
+| `deploy/` | `deployment` |
+| `pipeline/` | `pipeline` |
+| `onboard*/` | `onboarding` |
+| `postmortem/` | `postmortem` |
+
 ## How It Works
 
 ### Indexing (startup, 2-5s for 900 docs)
@@ -161,18 +222,22 @@ See [DESIGN.md](docs/DESIGN.md) for the full scoring tuning guide with per-corpu
 1. Scan `.md` files from each collection root
 2. Parse with `Bun.markdown.render()` callbacks → section tree
 3. Extract frontmatter → metadata + filter facets
-4. Compute content hash for incremental re-indexing
-5. Tokenize, stem, build positional inverted index
-6. Build facet index from frontmatter values
+4. Auto-infer `type` facet from directory structure (if not in frontmatter)
+5. Improve generic titles ("Introduction" → "Auth System — Introduction")
+6. Compute content hash for incremental re-indexing
+7. Tokenize, stem, build positional inverted index (title 3x, description 2x, code 1.5x)
+8. Build facet index from frontmatter values
+9. Load glossary for query expansion (if `glossary.json` present)
 
 ### Search (5-30ms per query)
 
 1. Tokenize + stem query terms
-2. Apply facet filters (narrow candidate set before scoring)
-3. Look up postings in inverted index (exact + prefix)
-4. Compute BM25 score per node: `IDF × saturated TF × weight`
-5. Apply co-occurrence bonuses + collection weights
-6. Generate density-based snippets (highest match concentration)
+2. Expand query via glossary (abbreviation ↔ full forms)
+3. Apply facet filters (narrow candidate set before scoring)
+4. Look up postings in inverted index (exact + prefix)
+5. Compute BM25 score per node: `IDF × saturated TF × weight`
+6. Apply co-occurrence bonuses + collection weights
+7. Generate density-based snippets (highest match concentration)
 
 ### Tree Navigation (< 1ms)
 

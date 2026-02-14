@@ -19,6 +19,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { DocumentStore } from "./store";
 import { indexAllCollections } from "./indexer";
 import { singleRootConfig } from "./types";
@@ -97,7 +99,7 @@ server.tool(
 
 server.tool(
   "search_documents",
-  "Search across all indexed documents by keyword. Matches against section titles and content. Returns ranked results with snippets. Use this to find which documents and sections are relevant to a topic.",
+  "Search across all indexed documents by keyword. Matches against section titles and content. Returns ranked results with snippets. Use filters to narrow by frontmatter facets (e.g., type, category, tags). Query terms are automatically expanded using the glossary if one is configured.",
   {
     query: z
       .string()
@@ -106,6 +108,12 @@ server.tool(
       .string()
       .optional()
       .describe("Limit search to a specific document"),
+    filters: z
+      .record(z.union([z.string(), z.array(z.string())]))
+      .optional()
+      .describe(
+        'Facet filters to narrow results. Keys are frontmatter fields (e.g., "type", "tags", "category"). Values can be a string or array of strings. Example: { "type": "runbook", "tags": ["auth", "jwt"] }'
+      ),
     limit: z
       .number()
       .min(1)
@@ -113,8 +121,8 @@ server.tool(
       .default(15)
       .describe("Max results"),
   },
-  async ({ query, doc_id, limit }) => {
-    const results = store.searchDocuments(query, { limit, doc_id });
+  async ({ query, doc_id, filters, limit }) => {
+    const results = store.searchDocuments(query, { limit, doc_id, filters });
 
     if (results.length === 0) {
       return {
@@ -323,6 +331,18 @@ async function main() {
   const startTime = Date.now();
   const documents = await indexAllCollections(config);
   store.load(documents);
+
+  // Load glossary if present (glossary.json in docs root)
+  const glossaryPath = process.env.GLOSSARY_PATH || join(docs_root, "glossary.json");
+  if (existsSync(glossaryPath)) {
+    try {
+      const glossaryData = await Bun.file(glossaryPath).json();
+      store.loadGlossary(glossaryData);
+      console.error(`[doctree-mcp] Glossary loaded from ${glossaryPath}`);
+    } catch (err: any) {
+      console.error(`[doctree-mcp] Warning: Failed to load glossary from ${glossaryPath}: ${err.message}`);
+    }
+  }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   const stats = store.getStats();
