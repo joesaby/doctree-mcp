@@ -326,6 +326,82 @@ function extractFacets(frontmatter: Frontmatter): Record<string, string[]> {
   return facets;
 }
 
+// ── Path-based type inference ───────────────────────────────────────
+//
+// When frontmatter lacks a "type" field, infer document type from the
+// directory structure. Maps common directory naming conventions to
+// document types that become filterable facets.
+
+const PATH_TYPE_PATTERNS: [RegExp, string][] = [
+  [/\brunbooks?\b/i, "runbook"],
+  [/\bguides?\b/i, "guide"],
+  [/\btutorials?\b/i, "tutorial"],
+  [/\breference\b/i, "reference"],
+  [/\bapi[-_]?docs?\b/i, "api-reference"],
+  [/\barchitectur(e|al)\b/i, "architecture"],
+  [/\badr[s]?\b/i, "adr"],
+  [/\brfc[s]?\b/i, "rfc"],
+  [/\bprocedures?\b/i, "procedure"],
+  [/\bplaybooks?\b/i, "playbook"],
+  [/\btroubleshoot/i, "troubleshooting"],
+  [/\bfaq[s]?\b/i, "faq"],
+  [/\bchangelog/i, "changelog"],
+  [/\brelease[-_]?notes?\b/i, "release-notes"],
+  [/\bhowto\b/i, "howto"],
+  [/\bops\b/i, "operations"],
+  [/\bdeploy/i, "deployment"],
+  [/\bpipeline/i, "pipeline"],
+  [/\bonboard/i, "onboarding"],
+  [/\bpostmortem/i, "postmortem"],
+];
+
+function inferTypeFromPath(relPath: string): string | null {
+  // Check directory segments (not filename) for type patterns
+  const dirPath = relPath.includes("/")
+    ? relPath.substring(0, relPath.lastIndexOf("/"))
+    : "";
+
+  for (const [pattern, type] of PATH_TYPE_PATTERNS) {
+    if (pattern.test(dirPath)) {
+      return type;
+    }
+  }
+
+  return null;
+}
+
+// ── Generic title improvement ───────────────────────────────────────
+//
+// Many docs use generic titles like "Introduction" or "Overview" that
+// hurt search ranking. Prefix with the parent directory name for context.
+
+const GENERIC_TITLES = new Set([
+  "introduction",
+  "index",
+  "overview",
+  "readme",
+  "getting started",
+  "home",
+  "main",
+  "about",
+  "summary",
+]);
+
+function improveGenericTitle(title: string, relPath: string): string {
+  if (!GENERIC_TITLES.has(title.toLowerCase())) return title;
+
+  // Extract parent directory name as context
+  const parts = relPath.replace(/\.md$/i, "").split("/").filter(Boolean);
+  if (parts.length < 2) return title;
+
+  // Use the immediate parent directory
+  const parent = parts[parts.length - 2]
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+
+  return `${parent} — ${title}`;
+}
+
 // ── Content hashing (Pagefind-inspired) ─────────────────────────────
 //
 // Pagefind generates content-based fragment hashes so unchanged pages
@@ -357,10 +433,13 @@ export async function indexFile(
   // Extract facets from frontmatter (Pagefind data-pagefind-filter)
   const facets = extractFacets(frontmatter);
 
-  const title =
+  let title =
     (frontmatter.title as string) ||
     tree.find((n) => n.level <= 1)?.title ||
     basename(filePath, extname(filePath));
+
+  // Improve generic titles like "Introduction" with parent directory context
+  title = improveGenericTitle(title, relPath);
 
   const description =
     (frontmatter.description as string) || tree[0]?.summary || "";
@@ -371,6 +450,14 @@ export async function indexFile(
 
   // max_depth: deepest heading level in the document
   const max_depth = tree.reduce((max, n) => Math.max(max, n.level), 0);
+
+  // Auto-infer document type from path when not in frontmatter
+  if (!facets["type"]) {
+    const inferredType = inferTypeFromPath(relPath);
+    if (inferredType) {
+      facets["type"] = [inferredType];
+    }
+  }
 
   const fstat = await stat(filePath);
 

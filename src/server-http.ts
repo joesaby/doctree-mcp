@@ -7,6 +7,8 @@
  * Usage: DOCS_ROOT=./docs bun run src/server-http.ts
  */
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { DocumentStore } from "./store";
@@ -28,6 +30,18 @@ async function main() {
   console.log(`Indexing from ${docs_root}...`);
   const documents = await indexAllCollections(config);
   store.load(documents);
+
+  // Load glossary if present
+  const glossaryPath = process.env.GLOSSARY_PATH || join(docs_root, "glossary.json");
+  if (existsSync(glossaryPath)) {
+    try {
+      const glossaryData = await Bun.file(glossaryPath).json();
+      store.loadGlossary(glossaryData);
+      console.log(`Glossary loaded from ${glossaryPath}`);
+    } catch (err: any) {
+      console.warn(`Warning: Failed to load glossary: ${err.message}`);
+    }
+  }
 
   const stats = store.getStats();
   console.log(
@@ -112,14 +126,17 @@ function createMcpServer(store: DocumentStore): McpServer {
 
   server.tool(
     "search_documents",
-    "Search across all documents by keyword",
+    "Search across all documents by keyword. Use filters to narrow by frontmatter facets.",
     {
       query: z.string(),
       doc_id: z.string().optional(),
+      filters: z
+        .record(z.union([z.string(), z.array(z.string())]))
+        .optional(),
       limit: z.number().default(15),
     },
-    async ({ query, doc_id, limit }: any) => {
-      const results = store.searchDocuments(query, { limit, doc_id });
+    async ({ query, doc_id, filters, limit }: any) => {
+      const results = store.searchDocuments(query, { limit, doc_id, filters });
       const formatted = results
         .map(
           (r: any, i: number) =>

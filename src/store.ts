@@ -53,6 +53,11 @@ export class DocumentStore {
   // ── Ranking parameters (Pagefind-style configurable knobs) ───────
   private ranking: RankingParams = { ...DEFAULT_RANKING };
 
+  // ── Glossary for query expansion (abbreviation → expanded forms) ──
+  // Maps abbreviated terms to their expanded equivalents so queries
+  // like "CLI" also match "command line interface"
+  private glossary: Map<string, string[]> = new Map();
+
   // ── Load / Refresh ──────────────────────────────────────────────
 
   load(documents: IndexedDocument[]): void {
@@ -138,6 +143,62 @@ export class DocumentStore {
     }
   }
 
+  /**
+   * Load a glossary for query expansion.
+   *
+   * Maps abbreviations and short-forms to their expanded equivalents.
+   * During search, query terms are expanded using the glossary so that
+   * "CLI" also matches "command line interface", "K8s" matches
+   * "kubernetes", etc. Bidirectional: expanded terms also map back.
+   *
+   * Format: Record<string, string[]>
+   *   { "CLI": ["command line interface"], "K8s": ["kubernetes"] }
+   */
+  loadGlossary(entries: Record<string, string[]>): void {
+    this.glossary.clear();
+    for (const [key, expansions] of Object.entries(entries)) {
+      const normalizedKey = key.toLowerCase();
+      const normalizedExpansions = expansions.map((e) => e.toLowerCase());
+
+      // Forward: abbreviation → expanded forms
+      this.glossary.set(normalizedKey, normalizedExpansions);
+
+      // Reverse: each expanded term → abbreviation
+      for (const expansion of normalizedExpansions) {
+        const existing = this.glossary.get(expansion) || [];
+        if (!existing.includes(normalizedKey)) {
+          this.glossary.set(expansion, [...existing, normalizedKey]);
+        }
+      }
+    }
+    if (this.glossary.size > 0) {
+      console.log(`Glossary loaded: ${Object.keys(entries).length} entries → ${this.glossary.size} expansion mappings`);
+    }
+  }
+
+  /**
+   * Expand query terms using the glossary.
+   * Returns the original terms plus any glossary expansions.
+   */
+  private expandQueryTerms(terms: string[]): string[] {
+    if (this.glossary.size === 0) return terms;
+
+    const expanded = new Set(terms);
+    for (const term of terms) {
+      const expansions = this.glossary.get(term);
+      if (expansions) {
+        for (const expansion of expansions) {
+          // Tokenize and stem each expansion (may be multi-word)
+          const expandedTokens = tokenize(expansion).map(stem).filter((t) => t.length >= 2);
+          for (const t of expandedTokens) {
+            expanded.add(t);
+          }
+        }
+      }
+    }
+    return [...expanded];
+  }
+
   // ── Remove old postings for incremental update ──────────────────
 
   private removeDocumentPostings(doc: IndexedDocument): void {
@@ -182,8 +243,15 @@ export class DocumentStore {
   }
 
   private indexDocument(doc: IndexedDocument): void {
+    // Tokenize description separately for description_weight boosting
+    const descriptionTerms = doc.meta.description
+      ? new Set(tokenize(doc.meta.description).map(stem).filter((t) => t.length >= 2))
+      : new Set<string>();
+    const firstNodeId = doc.tree[0]?.node_id;
+
     for (const node of doc.tree) {
       const nodeKey = `${doc.meta.doc_id}::${node.node_id}`;
+      const isFirstNode = node.node_id === firstNodeId;
 
       // Tokenize title and body separately for weighting
       // (Pagefind also weights heading text differently from body text)
@@ -219,11 +287,14 @@ export class DocumentStore {
         const entry = termPositions.get(term)!;
         entry.positions.push(pos);
 
-        // Weight by position: title > code > body
+        // Weight by position: title > description > code > body
         // (Pagefind uses data-pagefind-weight for custom region weighting)
         let weight = 1.0;
         if (pos < titleEnd) {
           weight = this.ranking.title_weight;
+        } else if (isFirstNode && descriptionTerms.has(term)) {
+          // Boost description terms in the first node
+          weight = Math.max(weight, this.ranking.description_weight);
         } else if (codeTokens.has(allTokens[pos])) {
           weight = this.ranking.code_weight;
         }
@@ -394,7 +465,9 @@ export class DocumentStore {
     const queryTerms = tokenize(query).map(stem).filter((t) => t.length >= 2);
     if (queryTerms.length === 0) return [];
 
-    const uniqueTerms = [...new Set(queryTerms)];
+    // Expand query using glossary (abbreviation ↔ expanded forms)
+    const expandedTerms = this.expandQueryTerms(queryTerms);
+    const uniqueTerms = [...new Set(expandedTerms)];
 
     // Resolve facet filters to a doc_id whitelist (Pagefind-style pre-filter)
     let filterWhitelist: Set<string> | null = null;
