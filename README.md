@@ -160,8 +160,7 @@ Place a `glossary.json` in your docs root to enable bidirectional query expansio
 
 ```json
 {
-  "SSE": ["server-sent events"],
-  "LGW": ["landing gateway"],
+  "IG": ["Ingress gateway"],
   "JWT": ["json web token"],
   "K8s": ["kubernetes"]
 }
