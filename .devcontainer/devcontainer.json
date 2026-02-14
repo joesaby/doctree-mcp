@@ -1,0 +1,21 @@
+{
+  "name": "doctree-mcp",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "postCreateCommand": "bun install",
+  "forwardPorts": [3100],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "oven.bun-vscode"
+      ]
+    }
+  },
+  "remoteEnv": {
+    "DOCS_ROOT": "./docs"
+  }
+}
