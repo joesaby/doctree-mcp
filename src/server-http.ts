@@ -8,7 +8,7 @@
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { DocumentStore } from "./store";
 import { indexAllCollections } from "./indexer";
 import { singleRootConfig } from "./types";
@@ -55,7 +55,7 @@ async function main() {
         // For each incoming request, create server + transport
         // This is the stateless pattern from the MCP SDK docs
         const server = createMcpServer(store);
-        const transport = new StreamableHTTPServerTransport({
+        const transport = new WebStandardStreamableHTTPServerTransport({
           sessionIdGenerator: undefined, // stateless
         });
 
