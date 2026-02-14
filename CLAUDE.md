@@ -57,12 +57,13 @@ Place a `glossary.json` in the docs root (or set `GLOSSARY_PATH`):
 
 ```json
 {
-  "SSE": ["server-sent events"],
-  "IG": ["ingress gateway"],
+  "CLI": ["command line interface"],
+  "K8s": ["kubernetes"],
+  "TLS": ["transport layer security"]
 }
 ```
 
-This enables bidirectional query expansion: searching "SSE" also matches "server-sent events" and vice versa.
+This enables bidirectional query expansion: searching "CLI" also matches "command line interface" and vice versa.
 
 ## MCP Tools
 

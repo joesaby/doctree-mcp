@@ -88,21 +88,21 @@ How to verify backups are current.
 `;
 
 export const DOC_WITH_ABBREVIATIONS = `---
-title: "SSE Alert Configuration"
-tags: [sse, alerts]
+title: "CLI Tool Configuration"
+tags: [cli, tooling]
 ---
 
-# Alert Configuration
+# CLI Tool Configuration
 
-Configure server-sent events (SSE) alerting for the ingress landing gateway.
+Configure command line interface (CLI) tooling with MFA multi-factor authentication.
 
 ## PagerDuty Integration
 
-Set up PagerDuty for SSE alert routing.
+Set up PagerDuty for CLI alert routing.
 
 ## Metrics Dashboard
 
-Monitor  server-sent events throughput and connection health.
+Monitor CLI throughput and MFA verification health.
 `;
 
 export const DOC_MINIMAL = `# Just a Heading
@@ -183,9 +183,10 @@ curl https://api.example.com/users/me \\
 `;
 
 export const SAMPLE_GLOSSARY = {
-  SSE: ["server-sent events"],
-  Ingress: ["Ingress gateway"],
+  CLI: ["command line interface"],
+  MFA: ["multi-factor authentication"],
   JWT: ["json web token"],
   K8s: ["kubernetes"],
-  DB: ["database"]
+  DB: ["database"],
+  TLS: ["transport layer security"],
 };

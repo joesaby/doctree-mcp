@@ -463,16 +463,16 @@ describe("glossary query expansion", () => {
     store.load([
       makeDoc({
         meta: {
-          doc_id: "docs:sse-config",
-          file_path: "sse-config.md",
-          title: "SSE Configuration",
+          doc_id: "docs:cli-config",
+          file_path: "cli-config.md",
+          title: "CLI Configuration",
         },
         tree: [
           makeNode({
-            node_id: "docs:sse-config:n1",
-            title: "SSE Configuration",
+            node_id: "docs:cli-config:n1",
+            title: "CLI Configuration",
             content:
-              "Configure server-sent events for real-time updates from the landing gateway.",
+              "Configure command line interface for automation with multi-factor authentication.",
           }),
         ],
       }),
@@ -496,13 +496,13 @@ describe("glossary query expansion", () => {
 
   test("expands abbreviation to match full term", () => {
     store.loadGlossary({
-      SSE: ["server-sent events"],
+      CLI: ["command line interface"],
     });
 
-    // Search for "SSE" should find doc that has "server-sent events"
-    const results = store.searchDocuments("SSE");
+    // Search for "CLI" should find doc that has "command line interface"
+    const results = store.searchDocuments("CLI");
     expect(results.length).toBeGreaterThan(0);
-    expect(results.some((r) => r.doc_id === "docs:sse-config")).toBe(true);
+    expect(results.some((r) => r.doc_id === "docs:cli-config")).toBe(true);
   });
 
   test("expands full term to match abbreviation", () => {
@@ -524,12 +524,12 @@ describe("glossary query expansion", () => {
 
   test("handles multi-word glossary expansions", () => {
     store.loadGlossary({
-      LGW: ["landing gateway"],
+      MFA: ["multi-factor authentication"],
     });
 
-    const results = store.searchDocuments("LGW");
-    // Should find the doc that mentions "landing gateway"
-    expect(results.some((r) => r.doc_id === "docs:sse-config")).toBe(true);
+    const results = store.searchDocuments("MFA");
+    // Should find the doc that mentions "multi-factor authentication"
+    expect(results.some((r) => r.doc_id === "docs:cli-config")).toBe(true);
   });
 
   test("empty glossary has no effect", () => {

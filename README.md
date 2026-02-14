@@ -160,13 +160,14 @@ Place a `glossary.json` in your docs root to enable bidirectional query expansio
 
 ```json
 {
-  "IG": ["Ingress gateway"],
+  "CLI": ["command line interface"],
+  "TLS": ["transport layer security"],
   "JWT": ["json web token"],
   "K8s": ["kubernetes"]
 }
 ```
 
-Searching for "SSE" will also match "server-sent events" and vice versa. Override the path with `GLOSSARY_PATH=/path/to/glossary.json`.
+Searching for "CLI" will also match "command line interface" and vice versa. Override the path with `GLOSSARY_PATH=/path/to/glossary.json`.
 
 ## Frontmatter Best Practices
 

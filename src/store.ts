@@ -55,7 +55,7 @@ export class DocumentStore {
 
   // ── Glossary for query expansion (abbreviation → expanded forms) ──
   // Maps abbreviated terms to their expanded equivalents so queries
-  // like "SSE" also match "server-sent events"
+  // like "CLI" also match "command line interface"
   private glossary: Map<string, string[]> = new Map();
 
   // ── Load / Refresh ──────────────────────────────────────────────
@@ -148,11 +148,11 @@ export class DocumentStore {
    *
    * Maps abbreviations and short-forms to their expanded equivalents.
    * During search, query terms are expanded using the glossary so that
-   * "SSE" also matches "server-sent events", "LGW" matches "landing
-   * gateway", etc. Bidirectional: expanded terms also map back.
+   * "CLI" also matches "command line interface", "K8s" matches
+   * "kubernetes", etc. Bidirectional: expanded terms also map back.
    *
    * Format: Record<string, string[]>
-   *   { "SSE": ["server-sent events"], "LGW": ["landing gateway"] }
+   *   { "CLI": ["command line interface"], "K8s": ["kubernetes"] }
    */
   loadGlossary(entries: Record<string, string[]>): void {
     this.glossary.clear();
