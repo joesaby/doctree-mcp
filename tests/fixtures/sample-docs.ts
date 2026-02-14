@@ -92,9 +92,9 @@ title: "SSE Alert Configuration"
 tags: [sse, alerts]
 ---
 
-# SSE Alert Configuration
+# Alert Configuration
 
-Configure server-sent events (SSE) alerting for the LGW landing gateway.
+Configure server-sent events (SSE) alerting for the ingress landing gateway.
 
 ## PagerDuty Integration
 
@@ -102,7 +102,7 @@ Set up PagerDuty for SSE alert routing.
 
 ## Metrics Dashboard
 
-Monitor SSE throughput and LGW connection health.
+Monitor  server-sent events throughput and connection health.
 `;
 
 export const DOC_MINIMAL = `# Just a Heading
@@ -184,9 +184,8 @@ curl https://api.example.com/users/me \\
 
 export const SAMPLE_GLOSSARY = {
   SSE: ["server-sent events"],
-  LGW: ["landing gateway"],
+  Ingress: ["Ingress gateway"],
   JWT: ["json web token"],
   K8s: ["kubernetes"],
-  DB: ["database"],
-  AccessReg: ["access registration"],
+  DB: ["database"]
 };
