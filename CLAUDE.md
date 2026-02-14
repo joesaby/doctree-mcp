@@ -58,8 +58,7 @@ Place a `glossary.json` in the docs root (or set `GLOSSARY_PATH`):
 ```json
 {
   "SSE": ["server-sent events"],
-  "LGW": ["landing gateway"],
-  "AccessReg": ["access registration"]
+  "IG": ["ingress gateway"],
 }
 ```
 
