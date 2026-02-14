@@ -20,17 +20,16 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 import { DocumentStore } from "./store";
-import { indexDirectory } from "./indexer";
+import { indexAllCollections } from "./indexer";
+import { singleRootConfig } from "./types";
 import type { IndexConfig } from "./types";
 
 // ── Configuration ────────────────────────────────────────────────────
 
-const config: IndexConfig = {
-  docs_root: process.env.DOCS_ROOT || "./docs",
-  glob_pattern: process.env.DOCS_GLOB || "**/*.md",
-  max_depth: parseInt(process.env.MAX_DEPTH || "6"),
-  summary_length: parseInt(process.env.SUMMARY_LENGTH || "200"),
-};
+const docs_root = process.env.DOCS_ROOT || "./docs";
+const config: IndexConfig = singleRootConfig(docs_root);
+config.max_depth = parseInt(process.env.MAX_DEPTH || "6");
+config.summary_length = parseInt(process.env.SUMMARY_LENGTH || "200");
 
 // ── Initialize store ─────────────────────────────────────────────────
 
@@ -318,11 +317,11 @@ server.resource("index-stats", "md-tree://stats", async (uri) => {
 // ── Startup ──────────────────────────────────────────────────────────
 
 async function main() {
-  console.error(`[doctree-mcp] Indexing documents from: ${config.docs_root}`);
+  console.error(`[doctree-mcp] Indexing documents from: ${docs_root}`);
 
   // Index all documents at startup
   const startTime = Date.now();
-  const documents = await indexDirectory(config);
+  const documents = await indexAllCollections(config);
   store.load(documents);
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
