@@ -9,8 +9,9 @@
  *   bun run src/cli-index.ts --search "query"          # Search indexed docs
  */
 
-import { indexDirectory } from "./indexer";
+import { indexAllCollections } from "./indexer";
 import { DocumentStore } from "./store";
+import { singleRootConfig } from "./types";
 import type { IndexConfig } from "./types";
 
 const args = Bun.argv.slice(2);
@@ -21,17 +22,15 @@ function getArg(name: string): string | undefined {
   return undefined;
 }
 
-const config: IndexConfig = {
-  docs_root: getArg("root") || process.env.DOCS_ROOT || "./docs",
-  glob_pattern: getArg("glob") || "**/*.md",
-  max_depth: 6,
-  summary_length: 200,
-};
+const docs_root = getArg("root") || process.env.DOCS_ROOT || "./docs";
+const config: IndexConfig = singleRootConfig(docs_root);
+config.max_depth = 6;
+config.summary_length = 200;
 
 async function main() {
-  console.log(`\n📁 Indexing: ${config.docs_root}\n`);
+  console.log(`\n📁 Indexing: ${docs_root}\n`);
 
-  const documents = await indexDirectory(config);
+  const documents = await indexAllCollections(config);
   const store = new DocumentStore();
   store.load(documents);
 

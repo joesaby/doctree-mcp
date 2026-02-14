@@ -69,14 +69,27 @@ function findParentId(state: ParseState, level: number): string | null {
   return null;
 }
 
-// ── Core: Build tree from markdown using Bun.markdown.render() ───────
+// ── Check if Bun.markdown is available (requires Bun 1.3.8+) ─────────
+
+const hasBunMarkdown = typeof Bun !== "undefined" &&
+  typeof (Bun as any).markdown?.render === "function";
+
+if (!hasBunMarkdown) {
+  console.log("[doctree] Using regex parser (Bun.markdown requires Bun 1.3.8+)");
+}
+
+// ── Core: Build tree from markdown ───────────────────────────────────
 
 export function buildTree(markdown: string, doc_id: string): TreeNode[] {
+  if (!hasBunMarkdown) {
+    return buildTreeRegex(markdown, doc_id);
+  }
+
   const state = createParseState(doc_id);
   const lines = markdown.split("\n");
 
   try {
-    Bun.markdown.render(markdown, {
+    (Bun as any).markdown.render(markdown, {
       heading: (children: string, { level }: { level: number }) => {
         flushContent(state);
         state.node_counter++;
@@ -140,8 +153,7 @@ export function buildTree(markdown: string, doc_id: string): TreeNode[] {
       },
     });
   } catch (e) {
-    console.warn(`Bun.markdown parse failed for ${doc_id}, using fallback`);
-    return buildTreeFallback(markdown, doc_id);
+    return buildTreeRegex(markdown, doc_id);
   }
 
   flushContent(state);
@@ -172,9 +184,9 @@ export function buildTree(markdown: string, doc_id: string): TreeNode[] {
   return state.nodes;
 }
 
-// ── Fallback parser (regex-based) ────────────────────────────────────
+// ── Regex-based markdown parser ──────────────────────────────────────
 
-function buildTreeFallback(markdown: string, doc_id: string): TreeNode[] {
+function buildTreeRegex(markdown: string, doc_id: string): TreeNode[] {
   const lines = markdown.split("\n");
   const nodes: TreeNode[] = [];
   let counter = 0;
@@ -437,6 +449,25 @@ export async function indexAllCollections(
 
   console.log(`Total: ${allDocs.length} documents across ${config.collections.length} collection(s)`);
   return allDocs;
+}
+
+/**
+ * Backwards-compatible wrapper for indexing a single directory.
+ * @deprecated Use indexAllCollections with singleRootConfig instead.
+ */
+export async function indexDirectory(config: {
+  docs_root: string;
+  glob_pattern?: string;
+  max_depth?: number;
+  summary_length?: number;
+}): Promise<IndexedDocument[]> {
+  const collection: CollectionConfig = {
+    name: "docs",
+    root: config.docs_root,
+    weight: 1.0,
+    glob_pattern: config.glob_pattern || "**/*.md",
+  };
+  return indexCollection(collection);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────

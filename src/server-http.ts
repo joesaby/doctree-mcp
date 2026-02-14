@@ -10,15 +10,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { DocumentStore } from "./store";
-import { indexDirectory } from "./indexer";
+import { indexAllCollections } from "./indexer";
+import { singleRootConfig } from "./types";
 import type { IndexConfig } from "./types";
 
-const config: IndexConfig = {
-  docs_root: process.env.DOCS_ROOT || "./docs",
-  glob_pattern: process.env.DOCS_GLOB || "**/*.md",
-  max_depth: parseInt(process.env.MAX_DEPTH || "6"),
-  summary_length: parseInt(process.env.SUMMARY_LENGTH || "200"),
-};
+const docs_root = process.env.DOCS_ROOT || "./docs";
+const config: IndexConfig = singleRootConfig(docs_root);
+config.max_depth = parseInt(process.env.MAX_DEPTH || "6");
+config.summary_length = parseInt(process.env.SUMMARY_LENGTH || "200");
 
 const PORT = parseInt(process.env.PORT || "3100");
 
@@ -26,8 +25,8 @@ const store = new DocumentStore();
 
 async function main() {
   // Index documents
-  console.log(`Indexing from ${config.docs_root}...`);
-  const documents = await indexDirectory(config);
+  console.log(`Indexing from ${docs_root}...`);
+  const documents = await indexAllCollections(config);
   store.load(documents);
 
   const stats = store.getStats();
