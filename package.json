@@ -3,6 +3,31 @@
   "version": "1.0.0",
   "description": "Agentic document retrieval over markdown — BM25 search + tree navigation via MCP. Inspired by PageIndex and Pagefind.",
   "type": "module",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "rag",
+    "bm25",
+    "markdown",
+    "documentation",
+    "llm",
+    "ai",
+    "search",
+    "tree-navigation",
+    "claude"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/joesaby/doctree-mcp.git"
+  },
+  "homepage": "https://github.com/joesaby/doctree-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/joesaby/doctree-mcp/issues"
+  },
+  "license": "MIT",
+  "engines": {
+    "bun": ">=1.3.8"
+  },
   "scripts": {
     "serve": "bun run src/server.ts",
     "serve:http": "bun run src/server-http.ts",

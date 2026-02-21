@@ -1,0 +1,42 @@
+name: doctree-mcp
+description: Agentic document retrieval over markdown — BM25 search + tree navigation via MCP. No vector DB, no embeddings, no LLM calls at index time.
+license: MIT
+homepage: https://github.com/joesaby/doctree-mcp
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    required:
+      - docsRoot
+    properties:
+      docsRoot:
+        type: string
+        description: Absolute path to your markdown repository root
+      docsGlob:
+        type: string
+        default: "**/*.md"
+        description: Glob pattern for finding markdown files
+      maxDepth:
+        type: number
+        default: 6
+        description: Maximum heading depth to index (1-6)
+      summaryLength:
+        type: number
+        default: 200
+        description: Characters to include in node summaries
+      glossaryPath:
+        type: string
+        description: Path to glossary.json for query expansion (default: $DOCS_ROOT/glossary.json)
+  commandFunction: |-
+    (config) => ({
+      command: "bun",
+      args: ["run", "src/server.ts"],
+      env: {
+        DOCS_ROOT: config.docsRoot,
+        ...(config.docsGlob && { DOCS_GLOB: config.docsGlob }),
+        ...(config.maxDepth && { MAX_DEPTH: String(config.maxDepth) }),
+        ...(config.summaryLength && { SUMMARY_LENGTH: String(config.summaryLength) }),
+        ...(config.glossaryPath && { GLOSSARY_PATH: config.glossaryPath }),
+      }
+    })
