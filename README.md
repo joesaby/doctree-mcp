@@ -15,7 +15,7 @@ get_tree("docs:auth:middleware")           → see the heading hierarchy
     [n5] ### Automatic Refresh (90 words)
     [n6] ### Manual Refresh API (150 words)
     [n7] ### Error Handling (200 words)
-navigate_tree("docs:auth:middleware", "n4") → get exactly n4+n5+n6+n7
+navigate_tree("docs:auth:middleware", "docs:auth:middleware:n4") → get exactly n4+n5+n6+n7
 ```
 
 Context budget: **2K-8K tokens** with precise content, vs 4K-20K tokens of noisy chunks from vector RAG.
@@ -23,15 +23,11 @@ Context budget: **2K-8K tokens** with precise content, vs 4K-20K tokens of noisy
 ## Quick Start
 
 ```bash
-git clone https://github.com/joesaby/doctree-mcp.git
-cd doctree-mcp
-bun install
+# Install Bun if you don't have it
+curl -fsSL https://bun.com/install | bash
 
-cp .env.example .env
-# Edit .env: set DOCS_ROOT to your markdown folder
-
-bun run serve        # stdio — for Claude Desktop
-bun run serve:http   # HTTP — for other MCP clients
+# Run directly — no clone needed
+DOCS_ROOT=/path/to/your/markdown/docs bunx doctree-mcp
 ```
 
 ### Claude Desktop Configuration
@@ -40,15 +36,24 @@ bun run serve:http   # HTTP — for other MCP clients
 {
   "mcpServers": {
     "doctree": {
-      "command": "bun",
-      "args": ["run", "serve"],
-      "cwd": "/path/to/doctree-mcp",
+      "command": "bunx",
+      "args": ["doctree-mcp"],
       "env": {
         "DOCS_ROOT": "/path/to/your/markdown/docs"
       }
     }
   }
 }
+```
+
+### Run from source
+
+```bash
+git clone https://github.com/joesaby/doctree-mcp.git
+cd doctree-mcp
+bun install
+DOCS_ROOT=./docs bun run serve        # stdio
+DOCS_ROOT=./docs bun run serve:http   # HTTP (port 3100)
 ```
 
 ## MCP Tools
