@@ -1,6 +1,7 @@
 {
   "name": "doctree-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "mcpName": "io.github.joesaby/doctree-mcp",
   "description": "Agentic document retrieval over markdown — BM25 search + tree navigation via MCP. Inspired by PageIndex and Pagefind.",
   "type": "module",
   "keywords": [

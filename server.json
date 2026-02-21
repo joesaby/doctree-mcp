@@ -1,0 +1,47 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.joesaby/doctree-mcp",
+  "description": "BM25 search + tree navigation over markdown docs for AI agents. No embeddings, no LLM calls.",
+  "repository": {
+    "url": "https://github.com/joesaby/doctree-mcp",
+    "source": "github"
+  },
+  "version": "1.0.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "doctree-mcp",
+      "version": "1.0.1",
+      "runtimeHint": "bunx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "DOCS_ROOT",
+          "description": "Path to your markdown repository root",
+          "isRequired": true,
+          "isSecret": false
+        },
+        {
+          "name": "DOCS_GLOB",
+          "description": "Glob pattern for finding markdown files (default: **/*.md)",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "DOCS_ROOTS",
+          "description": "Multiple weighted collections: ./docs:1.0,./api:0.8 (alternative to DOCS_ROOT)",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GLOSSARY_PATH",
+          "description": "Path to glossary.json for query expansion (default: $DOCS_ROOT/glossary.json)",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}
