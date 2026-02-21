@@ -15,7 +15,7 @@ get_tree("docs:auth:middleware")           → see the heading hierarchy
     [n5] ### Automatic Refresh (90 words)
     [n6] ### Manual Refresh API (150 words)
     [n7] ### Error Handling (200 words)
-navigate_tree("docs:auth:middleware", "n4") → get exactly n4+n5+n6+n7
+navigate_tree("docs:auth:middleware", "docs:auth:middleware:n4") → get exactly n4+n5+n6+n7
 ```
 
 Context budget: **2K-8K tokens** with precise content, vs 4K-20K tokens of noisy chunks from vector RAG.
