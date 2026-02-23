@@ -2,6 +2,8 @@
 
 ## Environment Variables
 
+### Markdown indexing
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DOCS_ROOT` | `./docs` | Path to markdown repository root |
@@ -10,6 +12,48 @@
 | `SUMMARY_LENGTH` | `200` | Characters in node summaries |
 | `PORT` | `3100` | HTTP server port (`serve:http` only) |
 | `GLOSSARY_PATH` | `$DOCS_ROOT/glossary.json` | Path to abbreviation glossary |
+
+### Code navigation (AST-based)
+
+Set `CODE_ROOT` to enable AST-based code indexing alongside markdown docs.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CODE_ROOT` | *(disabled)* | Path to source code root. Set this to enable code indexing. |
+| `CODE_COLLECTION` | `code` | Name for the code collection |
+| `CODE_WEIGHT` | `1.0` | BM25 weight multiplier for code results vs docs |
+| `CODE_GLOB` | all supported extensions | Glob pattern for code files |
+
+**Supported languages:** TypeScript, JavaScript, Python, Go, Rust, Java, Kotlin, Scala, C, C++, C#, Ruby, Swift, PHP, Lua, Shell
+
+**How it works:** Source files are parsed into the same tree structure used for markdown. Classes, functions, interfaces, and types become tree nodes with parent-child relationships (e.g., class → methods). All existing tools (`search_documents`, `get_tree`, `get_node_content`, `navigate_tree`) work on code files unchanged. The `find_symbol` tool provides code-specific filtering by symbol kind and language.
+
+**Auto-generated facets for code:**
+
+| Facet | Values | Description |
+|-------|--------|-------------|
+| `language` | `typescript`, `python`, `go`, etc. | Detected from file extension |
+| `content_type` | `code` | Distinguishes code from markdown docs |
+| `symbol_kind` | `class`, `function`, `interface`, `type`, `enum`, `method`, `variable` | Symbol types found in the file |
+
+**Examples:**
+
+```bash
+# Docs only (default)
+DOCS_ROOT=./docs bun run serve
+
+# Docs + code
+DOCS_ROOT=./docs CODE_ROOT=./src bun run serve
+
+# Code only
+DOCS_ROOT=/dev/null CODE_ROOT=./src bun run serve
+
+# Code with custom glob (TypeScript only)
+CODE_ROOT=./src CODE_GLOB="**/*.{ts,tsx}" bun run serve
+
+# Weight docs higher than code in unified search results
+CODE_ROOT=./src CODE_WEIGHT=0.8 bun run serve
+```
 
 ---
 

@@ -1,8 +1,8 @@
 # doctree-mcp
 
-Agentic document retrieval over markdown — BM25 search + tree navigation via MCP.
+Agentic document retrieval over markdown and source code — BM25 search + tree navigation via MCP.
 
-Give an AI agent structured access to your markdown docs: it searches with BM25, reads the outline, reasons about which sections matter, and retrieves only what it needs. No vector DB, no embeddings, no LLM calls at index time.
+Give an AI agent structured access to your markdown docs and codebase: it searches with BM25, reads the outline, reasons about which sections matter, and retrieves only what it needs. Supports AST-based code navigation for TypeScript, Python, Go, Rust, Java, and more. No vector DB, no embeddings, no LLM calls at index time.
 
 ## Why
 
@@ -20,6 +20,19 @@ navigate_tree("docs:auth:middleware", "docs:auth:middleware:n4") → get exactly
 
 Context budget: **2K-8K tokens** with precise content, vs 4K-20K tokens of noisy chunks from vector RAG.
 
+The same tree navigation works on source code — classes, functions, and interfaces become tree nodes:
+
+```
+find_symbol("authenticate", kind: "function") → find code symbols
+get_tree("code:src:auth:service")             → see the file structure
+  [n1] class AuthService
+    [n2]   method constructor (12 words)
+    [n3]   method authenticate (28 words)
+    [n4]   method refreshToken (35 words)
+  [n5] function validateToken
+get_node_content("code:src:auth:service", ["n3"]) → get the function body
+```
+
 ## Quick Start
 
 ```bash
@@ -28,6 +41,13 @@ curl -fsSL https://bun.com/install | bash
 
 # Run directly — no clone needed
 DOCS_ROOT=/path/to/your/markdown/docs bunx doctree-mcp
+```
+
+### With code navigation
+
+```bash
+# Index both docs and source code
+DOCS_ROOT=./docs CODE_ROOT=./src bunx doctree-mcp
 ```
 
 ### Claude Desktop Configuration
@@ -39,7 +59,8 @@ DOCS_ROOT=/path/to/your/markdown/docs bunx doctree-mcp
       "command": "bunx",
       "args": ["doctree-mcp"],
       "env": {
-        "DOCS_ROOT": "/path/to/your/markdown/docs"
+        "DOCS_ROOT": "/path/to/your/markdown/docs",
+        "CODE_ROOT": "/path/to/your/source/code"
       }
     }
   }
@@ -52,8 +73,9 @@ DOCS_ROOT=/path/to/your/markdown/docs bunx doctree-mcp
 git clone https://github.com/joesaby/doctree-mcp.git
 cd doctree-mcp
 bun install
-DOCS_ROOT=./docs bun run serve        # stdio
-DOCS_ROOT=./docs bun run serve:http   # HTTP (port 3100)
+DOCS_ROOT=./docs bun run serve                     # docs only, stdio
+DOCS_ROOT=./docs CODE_ROOT=./src bun run serve      # docs + code
+DOCS_ROOT=./docs bun run serve:http                 # HTTP (port 3100)
 ```
 
 ## MCP Tools
@@ -65,6 +87,7 @@ DOCS_ROOT=./docs bun run serve:http   # HTTP (port 3100)
 | `get_tree` | Hierarchical outline for agent reasoning — structure and word counts, no content |
 | `get_node_content` | Retrieve full text of specific sections by node ID |
 | `navigate_tree` | Get a section and all descendants in one call |
+| `find_symbol` | Search code symbols by name, kind, and language (requires `CODE_ROOT`) |
 
 ## Configuration
 
@@ -72,6 +95,7 @@ DOCS_ROOT=./docs bun run serve:http   # HTTP (port 3100)
 # .env
 DOCS_ROOT=./docs    # path to your markdown repository
 DOCS_GLOB=**/*.md   # file glob pattern
+CODE_ROOT=./src     # path to source code (optional, enables code navigation)
 ```
 
 See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for multiple collections, ranking tuning, frontmatter best practices, and glossary setup.

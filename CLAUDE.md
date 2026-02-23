@@ -2,18 +2,23 @@
 
 ## Project Overview
 
-doctree-mcp is an MCP (Model Context Protocol) server that provides agentic document retrieval over markdown repositories. It combines BM25 probabilistic search with hierarchical tree navigation — agents get a table of contents they can reason over, plus precise section retrieval. No vector DB, no embeddings, no LLM calls at index or retrieval time.
+doctree-mcp is an MCP (Model Context Protocol) server that provides agentic document retrieval over markdown repositories and source code. It combines BM25 probabilistic search with hierarchical tree navigation — agents get a table of contents they can reason over, plus precise section retrieval. Supports AST-based code navigation for TypeScript, Python, Go, Rust, Java, and more. No vector DB, no embeddings, no LLM calls at index or retrieval time.
 
 ## Architecture
 
 ```
 src/
-├── indexer.ts     # Markdown → tree nodes + frontmatter extraction + facets
-├── store.ts       # In-memory BM25 search engine + filter facets + glossary
-├── types.ts       # All TypeScript interfaces and ranking defaults
-├── server.ts      # MCP stdio server (5 tools + 1 resource)
-├── server-http.ts # MCP HTTP/Streamable HTTP server variant
-└── cli-index.ts   # CLI debugging tool for inspecting indexed output
+├── indexer.ts        # Markdown → tree nodes + frontmatter extraction + facets
+├── code-indexer.ts   # Source code → tree nodes via AST parsing
+├── parsers/
+│   ├── typescript.ts # TS/JS regex-based AST extraction
+│   ├── python.ts     # Python indentation-based symbol extraction
+│   └── generic.ts    # Fallback for Go, Rust, Java, C, Ruby, etc.
+├── store.ts          # In-memory BM25 search engine + filter facets + glossary
+├── types.ts          # All TypeScript interfaces and ranking defaults
+├── server.ts         # MCP stdio server (6 tools + 1 resource)
+├── server-http.ts    # MCP HTTP/Streamable HTTP server variant
+└── cli-index.ts      # CLI debugging tool for inspecting indexed output
 ```
 
 ### Key Design Decisions
@@ -22,13 +27,15 @@ src/
 - **PageIndex-inspired tree navigation**: Agents read an outline, reason about it, then retrieve specific branches. This is more token-efficient than RAG's bag-of-chunks.
 - **Pagefind-inspired search**: Positional inverted index with BM25 scoring, density-based snippets, filter facets from frontmatter, content hashing for incremental re-indexing, multisite collection weights.
 - **Zero LLM calls**: All indexing and retrieval is deterministic search — no embedding models needed.
+- **Code navigation**: AST-based parsing maps source files into the same TreeNode model — classes, functions, and interfaces become tree nodes. The existing BM25 engine, facet filters, and all MCP tools work on code without modification.
 
 ### Data Flow
 
-1. **Indexing**: `indexer.ts` scans markdown files → parses frontmatter + heading tree → extracts facets (including auto-inferred `type` from directory structure) → computes content hash
-2. **Loading**: `store.ts` builds positional inverted index (term → postings with word positions and weights), filter facet index (key → value → doc_id set), and per-node stats for BM25 normalization
-3. **Searching**: Tokenize + stem query → expand via glossary → apply facet filters → compute BM25 scores → apply co-occurrence bonuses + collection weights → generate density-based snippets
-4. **Navigation**: Agent calls `get_tree` → compact outline → `get_node_content` or `navigate_tree` for precise retrieval
+1. **Indexing (markdown)**: `indexer.ts` scans markdown files → parses frontmatter + heading tree → extracts facets (including auto-inferred `type` from directory structure) → computes content hash
+2. **Indexing (code)**: `code-indexer.ts` scans source files → language-specific parsers extract symbols (class, function, interface, etc.) → maps to TreeNode hierarchy → adds language/symbol_kind facets
+3. **Loading**: `store.ts` builds positional inverted index (term → postings with word positions and weights), filter facet index (key → value → doc_id set), and per-node stats for BM25 normalization
+4. **Searching**: Tokenize + stem query → expand via glossary → apply facet filters → compute BM25 scores → apply co-occurrence bonuses + collection weights → generate density-based snippets
+5. **Navigation**: Agent calls `get_tree` → compact outline → `get_node_content` or `navigate_tree` for precise retrieval
 
 ## Development
 
@@ -50,6 +57,10 @@ DOCS_ROOT=./path bun run index  # Debug: inspect indexed output
 | `SUMMARY_LENGTH` | `200` | Characters in node summaries |
 | `PORT` | `3100` | HTTP server port |
 | `GLOSSARY_PATH` | `$DOCS_ROOT/glossary.json` | Path to abbreviation glossary |
+| `CODE_ROOT` | *(disabled)* | Path to source code root (enables code indexing) |
+| `CODE_COLLECTION` | `code` | Name for the code collection |
+| `CODE_WEIGHT` | `1.0` | BM25 weight multiplier for code results |
+| `CODE_GLOB` | all supported extensions | Glob pattern for code files |
 
 ### Glossary File Format
 
@@ -72,6 +83,7 @@ This enables bidirectional query expansion: searching "CLI" also matches "comman
 3. **`get_tree`** — Hierarchical outline (no content) for agent reasoning
 4. **`get_node_content`** — Retrieve full text of specific sections by node ID
 5. **`navigate_tree`** — Get a section and all descendants in one call
+6. **`find_symbol`** — Search code symbols by name, kind (`class`/`function`/`interface`/etc.), and language (requires `CODE_ROOT`)
 
 ## Code Conventions
 
