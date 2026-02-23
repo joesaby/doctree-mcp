@@ -20,6 +20,7 @@ import type {
   IndexConfig,
   CollectionConfig,
 } from "./types";
+import { indexCodeCollection, isCodeFile } from "./code-indexer";
 
 // ── State machine for tracking parse position ────────────────────────
 
@@ -523,18 +524,30 @@ export async function indexCollection(
 /**
  * Index all collections defined in config.
  * Supports Pagefind-style multisite: multiple roots, each a named collection.
+ * Also indexes code collections if configured.
  */
 export async function indexAllCollections(
   config: IndexConfig
 ): Promise<IndexedDocument[]> {
   const allDocs: IndexedDocument[] = [];
 
+  // Index markdown collections
   for (const collection of config.collections) {
     const docs = await indexCollection(collection);
     allDocs.push(...docs);
   }
 
-  console.log(`Total: ${allDocs.length} documents across ${config.collections.length} collection(s)`);
+  // Index code collections (AST-based)
+  if (config.code_collections && config.code_collections.length > 0) {
+    for (const collection of config.code_collections) {
+      const codeDocs = await indexCodeCollection(collection);
+      allDocs.push(...codeDocs);
+    }
+  }
+
+  const mdCount = config.collections.length;
+  const codeCount = config.code_collections?.length || 0;
+  console.log(`Total: ${allDocs.length} documents across ${mdCount} doc + ${codeCount} code collection(s)`);
   return allDocs;
 }
 

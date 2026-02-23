@@ -33,6 +33,19 @@ const config: IndexConfig = singleRootConfig(docs_root);
 config.max_depth = parseInt(process.env.MAX_DEPTH || "6");
 config.summary_length = parseInt(process.env.SUMMARY_LENGTH || "200");
 
+// Code collection: set CODE_ROOT to enable AST-based code indexing
+const code_root = process.env.CODE_ROOT;
+if (code_root) {
+  config.code_collections = [
+    {
+      name: process.env.CODE_COLLECTION || "code",
+      root: code_root,
+      weight: parseFloat(process.env.CODE_WEIGHT || "1.0"),
+      glob_pattern: process.env.CODE_GLOB,
+    },
+  ];
+}
+
 // ── Initialize store ─────────────────────────────────────────────────
 
 const store = new DocumentStore();
@@ -301,6 +314,71 @@ server.tool(
         {
           type: "text" as const,
           text: `Subtree: ${result.nodes[0].title} (${result.nodes.length} sections, ${totalWords} words)\n\n${formatted}`,
+        },
+      ],
+    };
+  }
+);
+
+// ── Tool 6: find_symbol ──────────────────────────────────────────────
+// Code-aware search: find classes, functions, interfaces, etc.
+// Leverages the existing BM25 index + facet filtering by symbol_kind.
+
+server.tool(
+  "find_symbol",
+  "Search for code symbols (classes, functions, interfaces, types, methods) across indexed source files. Filters by symbol kind and language. Returns matching symbols with their signatures and file locations. Requires CODE_ROOT to be configured.",
+  {
+    query: z
+      .string()
+      .describe("Symbol name or keyword to search for"),
+    kind: z
+      .enum(["class", "interface", "function", "method", "type", "enum", "variable"])
+      .optional()
+      .describe("Filter by symbol kind"),
+    language: z
+      .string()
+      .optional()
+      .describe("Filter by programming language (e.g., 'typescript', 'python', 'go')"),
+    limit: z
+      .number()
+      .min(1)
+      .max(50)
+      .default(15)
+      .describe("Max results"),
+  },
+  async ({ query, kind, language, limit }) => {
+    // Build facet filters for code-specific search
+    const filters: Record<string, string | string[]> = {
+      content_type: "code",
+    };
+    if (kind) filters["symbol_kind"] = kind;
+    if (language) filters["language"] = language;
+
+    const results = store.searchDocuments(query, { limit, filters });
+
+    if (results.length === 0) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `No symbols found for "${query}"${kind ? ` (kind: ${kind})` : ""}${language ? ` (language: ${language})` : ""}. Make sure CODE_ROOT is configured and code files are indexed.`,
+          },
+        ],
+      };
+    }
+
+    const formatted = results
+      .map(
+        (r, i) =>
+          `${i + 1}. ${r.node_title} [${r.node_id}]\n   File: ${r.file_path}\n   Score: ${r.score.toFixed(1)}\n   Signature: ${r.snippet}`
+      )
+      .join("\n\n");
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: `Symbol search for "${query}" (${results.length} matches):\n\n${formatted}\n\nUse get_tree(doc_id) to see the full file structure, or get_node_content(doc_id, [node_id]) to read a symbol's source code.`,
         },
       ],
     };

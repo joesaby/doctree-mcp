@@ -220,6 +220,8 @@ export interface CollectionConfig {
 /** Main configuration */
 export interface IndexConfig {
   collections: CollectionConfig[];
+  /** Optional code collections — source files indexed via AST parsing */
+  code_collections?: CollectionConfig[];
   summary_length: number;
   max_depth: number;
 }
