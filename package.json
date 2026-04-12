@@ -30,11 +30,15 @@
     "bun": ">=1.3.8"
   },
   "bin": {
-    "doctree-mcp": "bin.ts"
+    "doctree-mcp": "bin.ts",
+    "doctree-mcp-init": "bin-init.ts",
+    "doctree-mcp-lint": "bin-lint.ts"
   },
   "files": [
     "src/",
     "bin.ts",
+    "bin-init.ts",
+    "bin-lint.ts",
     "README.md",
     "LICENSE"
   ],
