@@ -17,6 +17,7 @@ import { singleRootConfig } from "./types";
 import type { IndexConfig } from "./types";
 import type { WikiOptions } from "./curator";
 import { registerTools } from "./tools";
+import { registerPrompts } from "./prompts";
 
 const docs_root = process.env.DOCS_ROOT || "./docs";
 const config: IndexConfig = singleRootConfig(docs_root);
@@ -108,6 +109,7 @@ function createMcpServer(store: DocumentStore, wiki?: WikiOptions): McpServer {
   });
 
   registerTools(server, store, { wiki });
+  registerPrompts(server, { wikiEnabled: !!wiki });
 
   return server;
 }

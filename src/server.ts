@@ -31,6 +31,7 @@ import { singleRootConfig } from "./types";
 import type { IndexConfig } from "./types";
 import type { WikiOptions } from "./curator";
 import { registerTools } from "./tools";
+import { registerPrompts } from "./prompts";
 
 // ── Configuration ────────────────────────────────────────────────────
 
@@ -67,6 +68,7 @@ if (process.env.WIKI_WRITE === "1") {
 // ── Register tools ──────────────────────────────────────────────────
 
 registerTools(server, store, { wiki });
+registerPrompts(server, { wikiEnabled: !!wiki });
 
 // ── Resources: expose index stats ────────────────────────────────────
 

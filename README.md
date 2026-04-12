@@ -124,6 +124,19 @@ To let your agent create and update docs, add `WIKI_WRITE`:
 
 This unlocks 3 additional wiki curation tools with safety guards: path containment, frontmatter validation, and duplicate detection.
 
+### 4. Use the built-in workflow prompts
+
+doctree-mcp registers two **MCP prompts** that guide any agent through the correct tool workflow. These work with every MCP client — Claude Desktop, Claude Code, Cursor, Windsurf, or any tool that supports the MCP protocol.
+
+| Prompt | What it does |
+|--------|-------------|
+| `doc-read` | Search → browse outline → retrieve specific sections |
+| `doc-write` | Check duplicates → scaffold → validate → write |
+
+Your agent can invoke these prompts to get step-by-step instructions for using the tools in the right order. No need to memorize the tool chain — the prompts encode it.
+
+> **Claude Code bonus:** The same workflows are also available as slash commands (`/doc-read`, `/doc-write`) via the `.claude/skills/` directory included in this repo.
+
 ---
 
 ## How It Works: Retrieve, Curate, Add
@@ -353,6 +366,8 @@ Memory: ~25-50MB for 900 docs with full positional index.
 - [Configuration](docs/CONFIGURATION.md) — env vars, frontmatter, ranking tuning, glossary
 - [LLM Wiki Guide](docs/LLM-WIKI-GUIDE.md) — setting up an agent-maintained knowledge base
 - [Competitive Analysis](docs/COMPETITIVE-ANALYSIS.md) — comparison with PageIndex, QMD, GitMCP, Context7
+- [Prompts source](src/prompts.ts) — MCP prompt templates (work with all clients)
+- [Skills: `/doc-read`](.claude/skills/doc-read/SKILL.md), [`/doc-write`](.claude/skills/doc-write/SKILL.md) — Claude Code slash commands
 
 ## Standing on Shoulders
 

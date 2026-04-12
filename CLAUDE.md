@@ -12,6 +12,7 @@ src/
 ├── store.ts            # In-memory BM25 search engine + filter facets + glossary + ref map
 ├── types.ts            # All TypeScript interfaces and ranking defaults
 ├── tools.ts            # MCP tool registrations (shared by stdio + HTTP servers)
+├── prompts.ts          # MCP prompt templates: doc-read + doc-write workflows (all clients)
 ├── search-formatter.ts # Rich search result formatting with inline content + facet badges
 ├── curator.ts          # Wiki curation: findSimilar, draftWikiEntry, writeWikiEntry
 ├── server.ts           # MCP stdio server entry point
