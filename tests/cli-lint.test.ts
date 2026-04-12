@@ -1,4 +1,4 @@
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { parseFrontmatter, countWords, extractLinks } from "../src/cli-lint";
 
 describe("parseFrontmatter", () => {
@@ -64,5 +64,70 @@ describe("extractLinks", () => {
 
   test("returns empty array when no links", () => {
     expect(extractLinks("no links here", "/wiki/doc.md", "/wiki")).toEqual([]);
+  });
+});
+
+import { mkdtemp, rm, mkdir } from "node:fs/promises";
+import { join, dirname } from "node:path";
+import { tmpdir } from "node:os";
+import { detectIssues } from "../src/cli-lint";
+
+describe("detectIssues", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "doctree-lint-"));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true });
+  });
+
+  async function writeFile(relPath: string, content: string) {
+    const abs = join(dir, relPath);
+    await mkdir(dirname(abs), { recursive: true });
+    await Bun.write(abs, content);
+  }
+
+  test("detects missing frontmatter fields", async () => {
+    await writeFile("doc.md", "# Hello\n\nsome content here words words words words words");
+    const issues = await detectIssues(dir, 5);
+    expect(issues.missingFrontmatter).toHaveLength(1);
+    expect(issues.missingFrontmatter[0]).toContain("doc.md");
+    expect(issues.missingFrontmatter[0]).toContain("title");
+  });
+
+  test("detects stubs", async () => {
+    await writeFile("stub.md", `---\ntitle: T\ndescription: D\ntags: [x]\n---\nshort`);
+    const issues = await detectIssues(dir, 100);
+    expect(issues.stubs).toHaveLength(1);
+    expect(issues.stubs[0]).toContain("stub.md");
+  });
+
+  test("detects orphaned pages", async () => {
+    await writeFile("a.md", `---\ntitle: A\ndescription: D\ntags: [x]\n---\nwords words words words words words`);
+    await writeFile("b.md", `---\ntitle: B\ndescription: D\ntags: [x]\n---\nwords words words words [A](a.md)`);
+    const issues = await detectIssues(dir, 5);
+    // b.md is not linked from anywhere — orphan
+    expect(issues.orphans.some((o) => o.includes("b.md"))).toBe(true);
+    // a.md is linked from b.md — not an orphan
+    expect(issues.orphans.some((o) => o.includes("a.md"))).toBe(false);
+  });
+
+  test("detects broken cross-references", async () => {
+    await writeFile("doc.md", `---\ntitle: T\ndescription: D\ntags: [x]\n---\nwords words [missing](missing.md)`);
+    const issues = await detectIssues(dir, 5);
+    expect(issues.brokenLinks).toHaveLength(1);
+    expect(issues.brokenLinks[0]).toContain("missing.md");
+  });
+
+  test("returns no issues for a clean wiki", async () => {
+    await writeFile("a.md", `---\ntitle: A\ndescription: D\ntags: [x]\n---\nwords words words words words [B](b.md)`);
+    await writeFile("b.md", `---\ntitle: B\ndescription: D\ntags: [x]\n---\nwords words words words words [A](a.md)`);
+    const issues = await detectIssues(dir, 5);
+    expect(issues.missingFrontmatter).toHaveLength(0);
+    expect(issues.stubs).toHaveLength(0);
+    expect(issues.orphans).toHaveLength(0);
+    expect(issues.brokenLinks).toHaveLength(0);
   });
 });
