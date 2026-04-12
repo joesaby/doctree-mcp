@@ -103,9 +103,15 @@ export function registerPrompts(
               "",
               "## Step 1: Check for duplicates",
               "Call find_similar with the content you plan to write.",
-              "If matches are found with overlap > 0.35:",
-              "- Read the existing doc (search → get_tree → get_node_content)",
-              "- Decide whether to update the existing doc or confirm a new one is warranted",
+              "",
+              "**If overlap > 0.35 — UPDATE WORKFLOW (don't create a new doc):**",
+              "1. Call navigate_tree(doc_id, root_node_id) to read the existing doc fully",
+              "2. Identify which sections to update, which to keep",
+              "3. Compose the full merged content (existing + new information)",
+              `4. Call write_wiki_entry(path: "<existing file path>", ..., overwrite: true)`,
+              "   — use the same path as the existing file",
+              "",
+              "**If overlap < 0.35 — proceed to Step 2 (scaffold a new entry):**",
               "",
               "## Step 2: Generate a scaffold",
               `Call draft_wiki_entry with topic: "${topic}" and your raw_content.`,
@@ -138,4 +144,45 @@ export function registerPrompts(
       ],
     };
   });
+
+  // ── Prompt 3: doc-lint ──────────────────────────────────────────────
+  server.registerPrompt("doc-lint", {
+    title: "Audit Wiki Health",
+    description:
+      "Audit the wiki for orphaned pages, stubs, and missing frontmatter. Guides the agent through a health check using existing search and navigation tools.",
+    argsSchema: {},
+  }, () => ({
+    messages: [
+      {
+        role: "user" as const,
+        content: {
+          type: "text" as const,
+          text: [
+            "Perform a wiki health audit using the doctree-mcp tools.",
+            "",
+            "## Step 1: Find orphaned pages",
+            "Call list_documents() with no filters.",
+            "Look for documents with no cross-references (the 'links to:' field is absent or empty).",
+            "These are candidates for orphaned pages — nothing links to them.",
+            "",
+            "## Step 2: Find stubs",
+            "In the list_documents results, look for documents with very low word counts (< 100 words).",
+            "Call get_tree on each to confirm they are genuinely sparse.",
+            "",
+            "## Step 3: Check frontmatter completeness",
+            "For any documents flagged in steps 1 or 2, call get_node_content on the root node.",
+            "Check whether the content has: title, description, tags, type, category in the frontmatter.",
+            "",
+            "## Step 4: Report and act",
+            "Summarize what you found:",
+            "- Orphaned pages: suggest adding cross-references from related docs",
+            "- Stubs: suggest expanding with more content or merging into a related doc",
+            "- Missing frontmatter: suggest the missing fields based on the content",
+            "",
+            "For each issue, ask the user whether to fix it now or skip.",
+          ].join("\n"),
+        },
+      },
+    ],
+  }));
 }
