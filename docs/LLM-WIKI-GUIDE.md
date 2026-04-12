@@ -21,7 +21,7 @@ This implements the three-layer architecture from [Andrej Karpathy's LLM wiki pa
 Run in your project root:
 
 ```bash
-bunx doctree-mcp-init
+bunx doctree-mcp init
 ```
 
 This creates the three-layer structure and configures your AI tool:
@@ -123,14 +123,14 @@ The `doc-lint` prompt guides the agent through: orphan detection → stub detect
 Run the linter manually at any time:
 
 ```bash
-WIKI_ROOT=./docs/wiki bunx doctree-mcp-lint
+WIKI_ROOT=./docs/wiki bunx doctree-mcp lint
 ```
 
 ---
 
 ## Step 5: Multi-collection search
 
-By default, `bunx doctree-mcp-init` configures two collections with different weights:
+By default, `bunx doctree-mcp init` configures two collections with different weights:
 
 ```
 DOCS_ROOTS=./docs/wiki:1.0,./docs/raw-sources:0.3

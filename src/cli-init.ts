@@ -2,9 +2,9 @@
  * Init CLI — scaffolds a Karpathy-style LLM wiki and configures AI tools.
  *
  * Usage:
- *   bunx doctree-mcp-init           # interactive tool selection
- *   bunx doctree-mcp-init --all     # configure all supported tools
- *   bunx doctree-mcp-init --dry-run # print actions without writing
+ *   bunx doctree-mcp init           # interactive tool selection
+ *   bunx doctree-mcp init --all     # configure all supported tools
+ *   bunx doctree-mcp init --dry-run # print actions without writing
  */
 
 import { resolve, join, dirname } from "node:path";
@@ -170,7 +170,7 @@ export function generateHookConfig(tool: Tool): GeneratedFile | null {
               PostToolUse: [
                 {
                   matcher: "write_wiki_entry",
-                  hooks: [{ type: "command", command: "bunx doctree-mcp-lint" }],
+                  hooks: [{ type: "command", command: "bunx doctree-mcp lint" }],
                 },
               ],
             },
@@ -187,7 +187,7 @@ export function generateHookConfig(tool: Tool): GeneratedFile | null {
           {
             version: 1,
             hooks: {
-              afterMCPExecution: [{ command: "bunx doctree-mcp-lint" }],
+              afterMCPExecution: [{ command: "bunx doctree-mcp lint" }],
             },
           },
           null,
@@ -203,7 +203,7 @@ export function generateHookConfig(tool: Tool): GeneratedFile | null {
             hooks: {
               // Windsurf cannot filter by MCP tool name — runs on all MCP calls.
               // doctree-mcp-lint exits quickly when there are no issues.
-              post_mcp_tool_use: [{ command: "bunx doctree-mcp-lint" }],
+              post_mcp_tool_use: [{ command: "bunx doctree-mcp lint" }],
             },
           },
           null,
@@ -219,7 +219,7 @@ export function generateHookConfig(tool: Tool): GeneratedFile | null {
           "export const DoctreeLintPlugin = async ({ $ }) => ({",
           '  "tool.execute.after": async (event) => {',
           '    if (event?.tool?.name === "write_wiki_entry") {',
-          "      try { await $`bunx doctree-mcp-lint`; } catch {}",
+          "      try { await $`bunx doctree-mcp lint`; } catch {}",
           "    }",
           "  },",
           "});",
@@ -241,7 +241,7 @@ export function generateHookConfig(tool: Tool): GeneratedFile | null {
                     {
                       type: "command",
                       command:
-                        "# Codex MCP hooks not yet supported. Remove this comment when available.\n# bunx doctree-mcp-lint",
+                        "# Codex MCP hooks not yet supported. Remove this comment when available.\n# bunx doctree-mcp lint",
                     },
                   ],
                 },

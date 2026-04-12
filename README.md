@@ -19,7 +19,7 @@ doctree-mcp is an [MCP](https://modelcontextprotocol.io/) server that indexes yo
 Run the init command in your project root:
 
 ```bash
-bunx doctree-mcp-init
+bunx doctree-mcp init
 ```
 
 This scaffolds the [Karpathy LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) three-layer structure and configures your AI tool(s) automatically:
@@ -30,8 +30,8 @@ This scaffolds the [Karpathy LLM Wiki](https://gist.github.com/karpathy/442a6bf5
 - Appends wiki conventions to `CLAUDE.md` / `AGENTS.md` / `.cursor/rules/`
 
 ```bash
-bunx doctree-mcp-init --all     # configure all supported tools
-bunx doctree-mcp-init --dry-run # preview without writing
+bunx doctree-mcp init --all     # configure all supported tools
+bunx doctree-mcp init --dry-run # preview without writing
 ```
 
 See [docs/LLM-WIKI-GUIDE.md](docs/LLM-WIKI-GUIDE.md) for the full walkthrough.
@@ -71,7 +71,7 @@ Add `.mcp.json` to your project root:
     "PostToolUse": [
       {
         "matcher": "write_wiki_entry",
-        "hooks": [{ "type": "command", "command": "bunx doctree-mcp-lint" }]
+        "hooks": [{ "type": "command", "command": "bunx doctree-mcp lint" }]
       }
     ]
   }
@@ -107,12 +107,12 @@ Add `.cursor/mcp.json` to your project root:
 {
   "version": 1,
   "hooks": {
-    "afterMCPExecution": [{ "command": "bunx doctree-mcp-lint" }]
+    "afterMCPExecution": [{ "command": "bunx doctree-mcp lint" }]
   }
 }
 ```
 
-**Rules** — commit `.cursor/rules/doctree-wiki.mdc` with your wiki conventions (created by `bunx doctree-mcp-init`).
+**Rules** — commit `.cursor/rules/doctree-wiki.mdc` with your wiki conventions (created by `bunx doctree-mcp init`).
 
 ---
 
@@ -142,7 +142,7 @@ Add `.windsurf/mcp.json` to your project root:
 ```json
 {
   "hooks": {
-    "post_mcp_tool_use": [{ "command": "bunx doctree-mcp-lint" }]
+    "post_mcp_tool_use": [{ "command": "bunx doctree-mcp lint" }]
   }
 }
 ```
@@ -165,7 +165,7 @@ WIKI_WRITE = "1"
 
 **Workflow prompts:** Use the `doc-read`, `doc-write`, and `doc-lint` MCP prompts.
 
-**Lint hook:** Codex hooks currently only intercept Bash tool calls. MCP tool interception is not yet supported — run `bunx doctree-mcp-lint` manually or use the `doc-lint` prompt for audits.
+**Lint hook:** Codex hooks currently only intercept Bash tool calls. MCP tool interception is not yet supported — run `bunx doctree-mcp lint` manually or use the `doc-lint` prompt for audits.
 
 ---
 
@@ -192,13 +192,13 @@ Add to `opencode.json`:
 
 **Workflow prompts:** Use the `doc-read`, `doc-write`, and `doc-lint` MCP prompts.
 
-**Lint plugin** — add `.opencode/plugins/doctree-lint.js` (created by `bunx doctree-mcp-init`):
+**Lint plugin** — add `.opencode/plugins/doctree-lint.js` (created by `bunx doctree-mcp init`):
 
 ```javascript
 export const DoctreeLintPlugin = async ({ $ }) => ({
   "tool.execute.after": async (event) => {
     if (event?.tool?.name === "write_wiki_entry") {
-      try { await $`bunx doctree-mcp-lint`; } catch {}
+      try { await $`bunx doctree-mcp lint`; } catch {}
     }
   },
 });
@@ -224,7 +224,7 @@ Add to your [Claude Desktop config](https://modelcontextprotocol.io/quickstart/u
 }
 ```
 
-> Claude Desktop does not support project-level hook configs. Use `bunx doctree-mcp-lint` manually or invoke the `doc-lint` MCP prompt for audits.
+> Claude Desktop does not support project-level hook configs. Use `bunx doctree-mcp lint` manually or invoke the `doc-lint` MCP prompt for audits.
 
 ---
 
