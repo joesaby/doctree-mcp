@@ -74,6 +74,8 @@ export interface DocumentMeta {
   content_hash: string; // Pagefind-style content hash for incremental re-index
   collection: string; // Pagefind-style multisite collection name
   facets: Record<string, string[]>; // Pagefind-style filter facets from frontmatter
+  /** Cross-references: doc-relative paths extracted from markdown links */
+  references: string[];
 }
 
 /** Complete indexed document */
@@ -220,6 +222,8 @@ export interface CollectionConfig {
 /** Main configuration */
 export interface IndexConfig {
   collections: CollectionConfig[];
+  /** Optional code collections — source files indexed via AST parsing */
+  code_collections?: CollectionConfig[];
   summary_length: number;
   max_depth: number;
 }

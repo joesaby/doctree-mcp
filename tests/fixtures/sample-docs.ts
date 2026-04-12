@@ -182,6 +182,46 @@ curl https://api.example.com/users/me \\
 \`\`\`
 `;
 
+export const DOC_WITH_LINKS = `---
+title: "Service Architecture"
+tags: [architecture, microservices]
+---
+
+# Service Architecture
+
+Overview of the service architecture. See [Auth Guide](../auth/middleware.md) for authentication details.
+
+## API Gateway
+
+The API gateway handles routing. For deployment steps, see [Deploy Guide](/deploy/production.md).
+
+## Database Layer
+
+Database configuration is documented in [DB Setup](./db-setup.md#connection-pooling).
+
+## External Resources
+
+For more info, see [Kubernetes Docs](https://kubernetes.io/docs) and [contact us](mailto:team@example.com).
+`;
+
+export const DOC_WITH_ACRONYMS = `---
+title: "Security Overview"
+tags: [security]
+---
+
+# Security Overview
+
+Our system uses TLS (Transport Layer Security) for all communications.
+
+## Authentication
+
+We implement SSO (Single Sign On) with SAML — Security Assertion Markup Language integration.
+
+## Encryption
+
+AES — Advanced Encryption Standard is used for data at rest.
+`;
+
 export const SAMPLE_GLOSSARY = {
   CLI: ["command line interface"],
   MFA: ["multi-factor authentication"],
