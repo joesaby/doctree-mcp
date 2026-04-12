@@ -47,6 +47,35 @@ function makeNodeId(doc_id: string, counter: number): string {
   return `${doc_id}:n${counter}`;
 }
 
+function extractFirstSentence(text: string, maxLen: number): string {
+  if (!text || text.length === 0) return "";
+
+  // Skip leading code blocks, tables, and list markers
+  const cleaned = text
+    .replace(/^\[code:\w*\].*$/m, "")
+    .replace(/^\s*[-*•]\s*/m, "")
+    .trim();
+  if (!cleaned)
+    return text.slice(0, maxLen) + (text.length > maxLen ? "…" : "");
+
+  // First sentence boundary: period/question/exclamation followed by
+  // whitespace or end-of-string, but not inside abbreviations
+  const sentenceEnd = cleaned.search(/[.!?](?:\s|$)/);
+
+  if (sentenceEnd !== -1 && sentenceEnd < maxLen) {
+    return cleaned.slice(0, sentenceEnd + 1);
+  }
+
+  // No sentence boundary — fall back to word-boundary slice
+  if (cleaned.length <= maxLen) return cleaned;
+  const truncated = cleaned.slice(0, maxLen);
+  const lastSpace = truncated.lastIndexOf(" ");
+  if (lastSpace > maxLen * 0.6) {
+    return truncated.slice(0, lastSpace) + "…";
+  }
+  return truncated + "…";
+}
+
 function flushContent(state: ParseState): void {
   if (state.current_node_id && state.content_buffer.length > 0) {
     const node = state.nodes.find((n) => n.node_id === state.current_node_id);
@@ -54,7 +83,7 @@ function flushContent(state: ParseState): void {
       const text = state.content_buffer.join("\n").trim();
       node.content = text;
       node.word_count = text.split(/\s+/).filter(Boolean).length;
-      node.summary = text.slice(0, 200) + (text.length > 200 ? "…" : "");
+      node.summary = extractFirstSentence(text, 200);
     }
   }
   state.content_buffer = [];
@@ -203,7 +232,7 @@ function buildTreeRegex(markdown: string, doc_id: string): TreeNode[] {
           const text = contentBuffer.join("\n").trim();
           prev.content = text;
           prev.word_count = text.split(/\s+/).filter(Boolean).length;
-          prev.summary = text.slice(0, 200);
+          prev.summary = extractFirstSentence(text, 200);
           prev.line_end = i;
         }
       }
@@ -248,7 +277,7 @@ function buildTreeRegex(markdown: string, doc_id: string): TreeNode[] {
       const text = contentBuffer.join("\n").trim();
       last.content = text;
       last.word_count = text.split(/\s+/).filter(Boolean).length;
-      last.summary = text.slice(0, 200);
+      last.summary = extractFirstSentence(text, 200);
       last.line_end = lines.length;
     }
   }
@@ -355,7 +384,7 @@ const PATH_TYPE_PATTERNS: [RegExp, string][] = [
   [/\bpostmortem/i, "postmortem"],
 ];
 
-function inferTypeFromPath(relPath: string): string | null {
+export function inferTypeFromPath(relPath: string): string | null {
   // Check directory segments (not filename) for type patterns
   const dirPath = relPath.includes("/")
     ? relPath.substring(0, relPath.lastIndexOf("/"))
@@ -413,6 +442,110 @@ function computeContentHash(content: string): string {
   return Bun.hash(content).toString(16);
 }
 
+// ── Cross-reference extraction ──────────────────────────────────────
+
+function extractReferences(body: string, relPath: string): string[] {
+  const refs = new Set<string>();
+  const linkRegex = /\[([^\]]*)\]\(([^)]+)\)/g;
+  let match;
+  while ((match = linkRegex.exec(body)) !== null) {
+    const target = match[2].split("#")[0].trim();
+    if (!target) continue;
+    if (/^https?:\/\//i.test(target)) continue;
+    if (/^mailto:/i.test(target)) continue;
+    if (target.startsWith("/")) {
+      refs.add(target.replace(/^\//, ""));
+    } else {
+      const dir = relPath.includes("/")
+        ? relPath.substring(0, relPath.lastIndexOf("/"))
+        : "";
+      const resolved = dir ? `${dir}/${target}` : target;
+      refs.add(normalizePath(resolved));
+    }
+  }
+  return [...refs];
+}
+
+function normalizePath(path: string): string {
+  const parts = path.split("/");
+  const normalized: string[] = [];
+  for (const part of parts) {
+    if (part === ".") continue;
+    if (part === ".." && normalized.length > 0) {
+      normalized.pop();
+    } else if (part !== "..") {
+      normalized.push(part);
+    }
+  }
+  return normalized.join("/");
+}
+
+// ── Content facet auto-detection ────────────────────────────────────
+
+function extractContentFacets(body: string): Record<string, string[]> {
+  const facets: Record<string, string[]> = {};
+
+  const codeBlockRegex = /```(\w+)?/g;
+  const languages = new Set<string>();
+  let hasCode = false;
+  let codeMatch;
+  while ((codeMatch = codeBlockRegex.exec(body)) !== null) {
+    hasCode = true;
+    if (codeMatch[1]) languages.add(codeMatch[1].toLowerCase());
+  }
+
+  if (hasCode) facets["has_code"] = ["true"];
+  if (languages.size > 0) facets["code_languages"] = [...languages].sort();
+
+  const linkCount = (body.match(/\[[^\]]*\]\([^)]+\)/g) || []).filter(
+    (m) => !/\]\(https?:\/\//i.test(m)
+  ).length;
+  if (linkCount > 0) facets["has_links"] = ["true"];
+
+  return facets;
+}
+
+// ── Auto-glossary extraction ────────────────────────────────────────
+
+export function extractGlossaryEntries(
+  text: string
+): Record<string, string[]> {
+  const entries: Record<string, string[]> = {};
+
+  // Pattern 1: ACRONYM (Expansion)
+  const acronymFirst =
+    /\b([A-Z][A-Z0-9]{1,10})\s+\(([A-Z][a-zA-Z\s]{3,60})\)/g;
+  let m;
+  while ((m = acronymFirst.exec(text)) !== null) {
+    const acronym = m[1];
+    const expansion = m[2].trim().toLowerCase();
+    if (!entries[acronym]) entries[acronym] = [];
+    if (!entries[acronym].includes(expansion)) entries[acronym].push(expansion);
+  }
+
+  // Pattern 2: Expansion (ACRONYM)
+  const expansionFirst =
+    /([A-Z][a-zA-Z\s]{3,60})\s+\(([A-Z][A-Z0-9]{1,10})\)/g;
+  while ((m = expansionFirst.exec(text)) !== null) {
+    const expansion = m[1].trim().toLowerCase();
+    const acronym = m[2];
+    if (!entries[acronym]) entries[acronym] = [];
+    if (!entries[acronym].includes(expansion)) entries[acronym].push(expansion);
+  }
+
+  // Pattern 3: ACRONYM — Expansion (em dash)
+  const dashPattern =
+    /\b([A-Z][A-Z0-9]{1,10})\s*[—–-]\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)(?:\s|[.,;]|$)/g;
+  while ((m = dashPattern.exec(text)) !== null) {
+    const acronym = m[1];
+    const expansion = m[2].trim().toLowerCase();
+    if (!entries[acronym]) entries[acronym] = [];
+    if (!entries[acronym].includes(expansion)) entries[acronym].push(expansion);
+  }
+
+  return entries;
+}
+
 // ── Index a single markdown file ────────────────────────────────────
 
 export async function indexFile(
@@ -459,6 +592,15 @@ export async function indexFile(
     }
   }
 
+  // Extract content-based facets (code languages, link presence)
+  const contentFacets = extractContentFacets(body);
+  for (const [key, values] of Object.entries(contentFacets)) {
+    if (!facets[key]) facets[key] = values;
+  }
+
+  // Extract cross-references from markdown links
+  const references = extractReferences(body, relPath);
+
   const fstat = await stat(filePath);
 
   const meta: DocumentMeta = {
@@ -474,6 +616,7 @@ export async function indexFile(
     content_hash,
     collection: collectionName,
     facets,
+    references,
   };
 
   return { meta, tree, root_nodes };

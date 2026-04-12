@@ -24,6 +24,7 @@ import type {
   FacetCounts,
 } from "./types";
 import { DEFAULT_RANKING } from "./types";
+import { extractGlossaryEntries } from "./indexer";
 
 export class DocumentStore {
   private docs: Map<string, IndexedDocument> = new Map();
@@ -58,6 +59,10 @@ export class DocumentStore {
   // like "CLI" also match "command line interface"
   private glossary: Map<string, string[]> = new Map();
 
+  // ── Reference map for cross-document linking ────────────────────
+  // basename(file_path) → { doc_id, tree }
+  private refMap: Map<string, { doc_id: string; tree: TreeNode[] }> = new Map();
+
   // ── Load / Refresh ──────────────────────────────────────────────
 
   load(documents: IndexedDocument[]): void {
@@ -74,6 +79,8 @@ export class DocumentStore {
 
     this.buildIndex();
     this.buildFilterIndex();
+    this.buildAutoGlossary(documents);
+    this.buildRefMap();
 
     console.log(
       `Store loaded: ${this.docs.size} docs, ${this.totalNodes} nodes, ` +
@@ -763,6 +770,94 @@ export class DocumentStore {
     }
 
     return { doc_id, nodes: result };
+  }
+
+  // ── Auto-glossary extraction ────────────────────────────────────
+
+  private buildAutoGlossary(documents: IndexedDocument[]): void {
+    const autoEntries: Record<string, string[]> = {};
+
+    for (const doc of documents) {
+      for (const node of doc.tree) {
+        const nodeEntries = extractGlossaryEntries(node.content);
+        for (const [acronym, expansions] of Object.entries(nodeEntries)) {
+          if (!autoEntries[acronym]) autoEntries[acronym] = [];
+          for (const exp of expansions) {
+            if (!autoEntries[acronym].includes(exp)) {
+              autoEntries[acronym].push(exp);
+            }
+          }
+        }
+      }
+      const metaEntries = extractGlossaryEntries(
+        `${doc.meta.title} ${doc.meta.description}`
+      );
+      for (const [acronym, expansions] of Object.entries(metaEntries)) {
+        if (!autoEntries[acronym]) autoEntries[acronym] = [];
+        for (const exp of expansions) {
+          if (!autoEntries[acronym].includes(exp)) {
+            autoEntries[acronym].push(exp);
+          }
+        }
+      }
+    }
+
+    // Merge without overwriting explicit glossary entries
+    let added = 0;
+    for (const [acronym, expansions] of Object.entries(autoEntries)) {
+      const key = acronym.toLowerCase();
+      if (!this.glossary.has(key)) {
+        this.glossary.set(key, expansions);
+        added++;
+      }
+    }
+    if (added > 0) {
+      console.log(`Auto-glossary: ${added} entries extracted from content`);
+    }
+  }
+
+  // ── Reference map ─────────────────────────────────────────────────
+
+  private buildRefMap(): void {
+    this.refMap.clear();
+    for (const doc of this.docs.values()) {
+      const basename =
+        doc.meta.file_path.split("/").pop() ?? doc.meta.file_path;
+      this.refMap.set(basename, { doc_id: doc.meta.doc_id, tree: doc.tree });
+    }
+  }
+
+  // ── Public reference / meta methods ───────────────────────────────
+
+  resolveRef(path: string): { doc_id: string; node_id?: string } | null {
+    const [filePart, fragment] = path.split("#");
+    const basename = filePart.split("/").pop() ?? filePart;
+    const entry = this.refMap.get(basename);
+    if (!entry) return null;
+
+    if (!fragment) return { doc_id: entry.doc_id };
+
+    const slug = fragment
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+    const node = entry.tree.find((n) => {
+      const nodeSlug = n.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+      return nodeSlug === slug || n.node_id === fragment;
+    });
+
+    return { doc_id: entry.doc_id, node_id: node?.node_id };
+  }
+
+  getDocMeta(doc_id: string): DocumentMeta | null {
+    return this.docs.get(doc_id)?.meta ?? null;
+  }
+
+  getGlossaryTerms(): string[] {
+    return [...this.glossary.keys()];
   }
 
   // ── Stats ───────────────────────────────────────────────────────

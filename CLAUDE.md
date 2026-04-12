@@ -8,12 +8,15 @@ doctree-mcp is an MCP (Model Context Protocol) server that provides agentic docu
 
 ```
 src/
-├── indexer.ts     # Markdown → tree nodes + frontmatter extraction + facets
-├── store.ts       # In-memory BM25 search engine + filter facets + glossary
-├── types.ts       # All TypeScript interfaces and ranking defaults
-├── server.ts      # MCP stdio server (5 tools + 1 resource)
-├── server-http.ts # MCP HTTP/Streamable HTTP server variant
-└── cli-index.ts   # CLI debugging tool for inspecting indexed output
+├── indexer.ts          # Markdown → tree nodes + frontmatter + facets + references + glossary extraction
+├── store.ts            # In-memory BM25 search engine + filter facets + glossary + ref map
+├── types.ts            # All TypeScript interfaces and ranking defaults
+├── tools.ts            # MCP tool registrations (shared by stdio + HTTP servers)
+├── search-formatter.ts # Rich search result formatting with inline content + facet badges
+├── curator.ts          # Wiki curation: findSimilar, draftWikiEntry, writeWikiEntry
+├── server.ts           # MCP stdio server entry point
+├── server-http.ts      # MCP HTTP/Streamable HTTP server variant
+└── cli-index.ts        # CLI debugging tool for inspecting indexed output
 ```
 
 ### Key Design Decisions
@@ -50,6 +53,9 @@ DOCS_ROOT=./path bun run index  # Debug: inspect indexed output
 | `SUMMARY_LENGTH` | `200` | Characters in node summaries |
 | `PORT` | `3100` | HTTP server port |
 | `GLOSSARY_PATH` | `$DOCS_ROOT/glossary.json` | Path to abbreviation glossary |
+| `WIKI_WRITE` | *(unset)* | Set to `1` to enable wiki curation tools |
+| `WIKI_ROOT` | `$DOCS_ROOT` | Filesystem root for wiki writes |
+| `WIKI_DUPLICATE_THRESHOLD` | `0.35` | Overlap ratio for duplicate warning |
 
 ### Glossary File Format
 
@@ -67,11 +73,17 @@ This enables bidirectional query expansion: searching "CLI" also matches "comman
 
 ## MCP Tools
 
-1. **`list_documents`** — Browse catalog with tag/keyword filtering, returns facet counts
-2. **`search_documents`** — BM25 keyword search with facet filters and glossary expansion
+### Read tools (always available)
+1. **`list_documents`** — Browse catalog with tag/keyword filtering, returns facet counts and cross-reference hints
+2. **`search_documents`** — BM25 keyword search with facet filters, glossary expansion, and auto-inlined top results
 3. **`get_tree`** — Hierarchical outline (no content) for agent reasoning
 4. **`get_node_content`** — Retrieve full text of specific sections by node ID
 5. **`navigate_tree`** — Get a section and all descendants in one call
+
+### Wiki curation tools (opt-in: `WIKI_WRITE=1`)
+6. **`find_similar`** — BM25 duplicate detection before writing
+7. **`draft_wiki_entry`** — Structural scaffold with inferred frontmatter
+8. **`write_wiki_entry`** — Validated write with path containment and duplicate guards
 
 ## Code Conventions
 
