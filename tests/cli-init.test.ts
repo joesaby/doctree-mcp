@@ -96,7 +96,7 @@ describe("generateHookConfig", () => {
     const postHooks = parsed.hooks?.PostToolUse;
     expect(postHooks).toBeDefined();
     expect(postHooks[0].matcher).toBe("write_wiki_entry");
-    expect(postHooks[0].hooks[0].command).toContain("doctree-mcp-lint");
+    expect(postHooks[0].hooks[0].command).toContain("doctree-mcp lint");
   });
 
   test("cursor: afterMCPExecution event", () => {
@@ -120,7 +120,7 @@ describe("generateHookConfig", () => {
     expect(result!.path).toBe(".opencode/plugins/doctree-lint.js");
     expect(result!.content).toContain("tool.execute.after");
     expect(result!.content).toContain("write_wiki_entry");
-    expect(result!.content).toContain("doctree-mcp-lint");
+    expect(result!.content).toContain("doctree-mcp lint");
   });
 
   test("codex: PostToolUse present", () => {

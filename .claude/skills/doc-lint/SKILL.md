@@ -37,6 +37,6 @@ Ask the user whether to fix each issue now, or skip.
 
 ## Tips
 
-- Run `bunx doctree-mcp-lint` in the terminal for a quick machine-readable summary
+- Run `bunx doctree-mcp lint` in the terminal for a quick machine-readable summary
 - Use `find_similar` if you want to check whether a stub should be merged into another doc
 - Cross-references are markdown links — adding `[Auth Guide](../auth/guide.md)` to a doc removes its orphan status
