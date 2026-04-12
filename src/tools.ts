@@ -11,6 +11,109 @@ import type { DocumentStore } from "./store";
 import { formatSearchResults } from "./search-formatter";
 import type { WikiOptions } from "./curator";
 
+// ── Rich text formatters for curation tool output ─────────────────
+
+interface SimilarMatch {
+  doc_id: string;
+  title: string;
+  file_path: string;
+  score: number;
+  overlap_ratio: number;
+  matched_terms: string[];
+}
+
+interface SimilarityResult {
+  matches: SimilarMatch[];
+  suggest_merge: boolean;
+  highest_overlap: number;
+}
+
+export function formatFindSimilarResult(
+  result: SimilarityResult,
+  threshold: number
+): string {
+  if (result.matches.length === 0) {
+    return `No similar documents found. Safe to create a new entry.`;
+  }
+
+  const lines: string[] = [`Found ${result.matches.length} similar document(s):\n`];
+
+  for (const m of result.matches) {
+    const overlapStr = m.overlap_ratio.toFixed(2);
+    lines.push(`  [overlap: ${overlapStr}] ${m.doc_id} — ${m.title}`);
+    lines.push(`    Path: ${m.file_path}`);
+    if (m.overlap_ratio >= threshold) {
+      lines.push(
+        `    ⚠ Consider updating this doc instead of creating a new one.`
+      );
+      lines.push(
+        `    → navigate_tree("${m.doc_id}", "<root_node_id>") to read it`
+      );
+    }
+    lines.push("");
+  }
+
+  if (result.suggest_merge) {
+    lines.push(
+      `Overlap above threshold (${threshold}). Recommended: read the existing doc,\nmerge your new content, then write_wiki_entry(overwrite: true).`
+    );
+  } else {
+    lines.push(`No duplicates above threshold (${threshold}). Safe to create a new entry.`);
+  }
+
+  return lines.join("\n");
+}
+
+interface DraftResult {
+  suggested_path: string;
+  frontmatter: Record<string, unknown>;
+  glossary_hits: string[];
+  similar_docs: SimilarMatch[];
+  duplicate_warning: boolean;
+}
+
+export function formatDraftResult(result: DraftResult): string {
+  const lines: string[] = ["Wiki Entry Draft\n"];
+
+  lines.push(`  Suggested path:  ${result.suggested_path}`);
+
+  const fm = result.frontmatter;
+  if (fm.type) lines.push(`  Inferred type:   ${fm.type}`);
+  if (fm.category) lines.push(`  Inferred category: ${fm.category}`);
+  if (Array.isArray(fm.tags) && fm.tags.length > 0) {
+    lines.push(`  Suggested tags:  ${(fm.tags as string[]).join(", ")}`);
+  }
+
+  lines.push("\n  Frontmatter:");
+  for (const [k, v] of Object.entries(fm)) {
+    const val = Array.isArray(v) ? `[${(v as string[]).join(", ")}]` : String(v);
+    lines.push(`    ${k}: ${val}`);
+  }
+
+  if (result.glossary_hits.length > 0) {
+    lines.push(`\n  Glossary hits: ${result.glossary_hits.join(", ")}`);
+  }
+
+  if (result.similar_docs.length > 0) {
+    lines.push("\n  Related docs (backlinks to include):");
+    for (const d of result.similar_docs) {
+      lines.push(`    - ${d.title} (${d.file_path})`);
+    }
+  }
+
+  if (result.duplicate_warning) {
+    const top = result.similar_docs[0];
+    lines.push(
+      `\n  ⚠ Warning: Similar content exists in ${top?.file_path ?? "an existing doc"} (overlap: ${top?.overlap_ratio ?? "?"}).`
+    );
+    lines.push(
+      `    Consider updating the existing doc instead (use the update workflow).`
+    );
+  }
+
+  return lines.join("\n");
+}
+
 export function registerTools(
   server: McpServer,
   store: DocumentStore,
@@ -278,7 +381,7 @@ function registerCurationTools(
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify(result, null, 2),
+            text: formatFindSimilarResult(result, threshold),
           },
         ],
       };
@@ -308,7 +411,7 @@ function registerCurationTools(
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify(result, null, 2),
+            text: formatDraftResult(result),
           },
         ],
       };

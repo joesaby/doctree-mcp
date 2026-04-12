@@ -22,10 +22,23 @@ Before writing anything, check if similar content already exists:
 find_similar(content: "<the content you plan to write>")
 ```
 
-If matches are found with overlap > 0.35:
-- **Read the existing doc** using the doc-read workflow (search → tree → content)
-- **Decide**: update the existing doc, or confirm with the user that a new doc is warranted
-- If the user wants to proceed anyway, you'll use `allow_duplicate: true` in step 4
+If matches are found with **overlap > 0.35** — **UPDATE WORKFLOW**:
+
+1. **Read the existing doc** — call `navigate_tree(doc_id, root_node_id)` to get the full content
+2. **Decide what to keep vs. replace** — identify sections that overlap with your new content
+3. **Compose the merged content** — write the full updated markdown (don't just append)
+4. **Overwrite** — call `write_wiki_entry` with the same path and `overwrite: true`:
+
+```
+write_wiki_entry(
+  path: "<same path as existing file>",
+  frontmatter: { ... },   ← keep existing frontmatter, update tags if needed
+  content: "<full merged content>",
+  overwrite: true
+)
+```
+
+If overlap is **below 0.35** — proceed to Step 2 (scaffold a new entry).
 
 ### Step 2: Generate a scaffold
 
