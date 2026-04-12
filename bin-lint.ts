@@ -1,2 +1,3 @@
 #!/usr/bin/env -S bun run
-import './src/cli-lint.ts'
+import { main } from './src/cli-lint.ts'
+main().catch(console.error)

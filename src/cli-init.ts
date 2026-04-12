@@ -418,7 +418,7 @@ async function promptTools(detected: Tool[]): Promise<Tool[]> {
     .map((i) => allTools[i]);
 }
 
-async function main() {
+export async function main() {
   const args = Bun.argv.slice(2);
   const dryRun = args.includes("--dry-run");
   const all = args.includes("--all");

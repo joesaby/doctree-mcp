@@ -139,7 +139,7 @@ export async function detectIssues(
 
 // ── Main ─────────────────────────────────────────────────────────────
 
-async function main() {
+export async function main() {
   const wikiRoot =
     process.env.WIKI_ROOT || process.env.DOCS_ROOT || "./docs/wiki";
   const minWords = parseInt(process.env.LINT_MIN_WORDS || "100", 10);
