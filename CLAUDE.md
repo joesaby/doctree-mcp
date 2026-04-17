@@ -2,14 +2,14 @@
 
 ## Project Overview
 
-doctree-mcp is an MCP (Model Context Protocol) server that provides agentic document retrieval over markdown repositories. It combines BM25 probabilistic search with hierarchical tree navigation — agents get a table of contents they can reason over, plus precise section retrieval. No vector DB, no embeddings, no LLM calls at index or retrieval time.
+doctree-mcp is an MCP (Model Context Protocol) server that provides agentic document retrieval over markdown, CSV, and JSONL files. It combines BM25 probabilistic search with hierarchical tree navigation — agents get a table of contents they can reason over, plus precise section retrieval. No vector DB, no embeddings, no LLM calls at index or retrieval time.
 
 ## Architecture
 
 ```
 src/
-├── indexer.ts          # Markdown → tree nodes + frontmatter + facets + references + glossary extraction
-├── store.ts            # In-memory BM25 search engine + filter facets + glossary + ref map
+├── indexer.ts          # Markdown/CSV/JSONL → tree nodes + frontmatter/column extraction + facets + references + glossary
+├── store.ts            # In-memory BM25 search engine + filter facets + glossary + ref map + row index
 ├── types.ts            # All TypeScript interfaces and ranking defaults
 ├── tools.ts            # MCP tool registrations (shared by stdio + HTTP servers)
 ├── prompts.ts          # MCP prompt templates: doc-read + doc-write workflows (all clients)
@@ -29,8 +29,8 @@ src/
 
 ### Data Flow
 
-1. **Indexing**: `indexer.ts` scans markdown files → parses frontmatter + heading tree → extracts facets (including auto-inferred `type` from directory structure) → computes content hash
-2. **Loading**: `store.ts` builds positional inverted index (term → postings with word positions and weights), filter facet index (key → value → doc_id set), and per-node stats for BM25 normalization
+1. **Indexing**: `indexer.ts` scans files by extension — markdown parsed into heading trees, CSV/JSONL parsed into row-per-node trees. Extracts frontmatter (markdown) or column facets (structured data). Computes content hash.
+2. **Loading**: `store.ts` builds positional inverted index (term → postings with word positions and weights), filter facet index (key → value → doc_id set), row index for `lookup_row` (key → node location), and per-node stats for BM25 normalization
 3. **Searching**: Tokenize + stem query → expand via glossary → apply facet filters → compute BM25 scores → apply co-occurrence bonuses + collection weights → generate density-based snippets
 4. **Navigation**: Agent calls `get_tree` → compact outline → `get_node_content` or `navigate_tree` for precise retrieval
 
@@ -49,7 +49,7 @@ DOCS_ROOT=./path bun run index  # Debug: inspect indexed output
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DOCS_ROOT` | `./docs` | Path to markdown repository |
-| `DOCS_GLOB` | `**/*.md` | File glob pattern |
+| `DOCS_GLOB` | `**/*.md` | Comma-separated glob patterns (e.g. `**/*.md,**/*.csv,**/*.jsonl`) |
 | `MAX_DEPTH` | `6` | Max heading depth to index |
 | `SUMMARY_LENGTH` | `200` | Characters in node summaries |
 | `PORT` | `3100` | HTTP server port |
@@ -57,6 +57,7 @@ DOCS_ROOT=./path bun run index  # Debug: inspect indexed output
 | `WIKI_WRITE` | *(unset)* | Set to `1` to enable wiki curation tools |
 | `WIKI_ROOT` | `$DOCS_ROOT` | Filesystem root for wiki writes |
 | `WIKI_DUPLICATE_THRESHOLD` | `0.35` | Overlap ratio for duplicate warning |
+| `CSV_MAX_TEXT_LENGTH` | `2000` | Truncate long CSV text fields for BM25 indexing |
 
 ### Glossary File Format
 
@@ -74,12 +75,17 @@ This enables bidirectional query expansion: searching "CLI" also matches "comman
 
 ## MCP Tools
 
-### Read tools (always available)
-1. **`list_documents`** — Browse catalog with tag/keyword filtering, returns facet counts and cross-reference hints
-2. **`search_documents`** — BM25 keyword search with facet filters, glossary expansion, and auto-inlined top results
-3. **`get_tree`** — Hierarchical outline (no content) for agent reasoning
-4. **`get_node_content`** — Retrieve full text of specific sections by node ID
-5. **`navigate_tree`** — Get a section and all descendants in one call
+### Core read tools (always available)
+1. **`search_documents`** — BM25 keyword search with facet filters, glossary expansion, and auto-inlined top results. Works across markdown, CSV, and JSONL.
+2. **`get_tree`** — Hierarchical outline (no content) for agent reasoning
+3. **`get_node_content`** — Retrieve full text of specific sections by node ID
+4. **`navigate_tree`** — Get a section and all descendants in one call
+5. **`lookup_row`** — O(1) exact key lookup for structured data rows (CSV/JSONL)
+
+### Deprecated read tools (still functional, superseded by core tools)
+- **`list_documents`** — Use `search_documents` with filters instead
+- **`find_files`** — `search_documents` finds content by meaning, not path
+- **`find_symbol`** — `search_documents` already boosts title matches at 3x
 
 ### Wiki curation tools (opt-in: `WIKI_WRITE=1`)
 6. **`find_similar`** — BM25 duplicate detection before writing
