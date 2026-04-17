@@ -2,7 +2,7 @@
 
 Give your AI agent a markdown knowledge base it can search, browse, and write to — no vector DB, no embeddings, no LLM calls at index time.
 
-doctree-mcp is an [MCP](https://modelcontextprotocol.io/) server that indexes your markdown files and exposes them as structured tools. Your agent gets BM25 search, a navigable table of contents, and (optionally) the ability to write and maintain docs.
+doctree-mcp is an [MCP](https://modelcontextprotocol.io/) server that indexes your markdown, CSV, and JSONL files and exposes them as structured tools. Your agent gets BM25 search, a navigable table of contents, exact key-based row lookup for structured data, and (optionally) the ability to write and maintain docs.
 
 ---
 
@@ -248,15 +248,23 @@ Agent: I need to understand the token refresh flow.
   Returns n4 + n5 — the full section and all subsections.
 ```
 
-**5 retrieval tools:**
+**5 core retrieval tools:**
 
 | Tool | What it does |
 |------|-------------|
-| `list_documents` | Browse the catalog. Filter by tag or keyword. |
-| `search_documents` | BM25 keyword search with facet filters and glossary expansion. |
+| `search_documents` | BM25 keyword search with facet filters and glossary expansion. Works across markdown, CSV, and JSONL. |
 | `get_tree` | Table of contents — headings, word counts, summaries. |
 | `get_node_content` | Full text of specific sections by node ID. |
 | `navigate_tree` | A section and all its descendants in one call. |
+| `lookup_row` | O(1) exact key lookup for structured data rows (e.g. `PROJ-44`). See [Structured Data](#structured-data). |
+
+**Deprecated retrieval tools** (still functional, superseded by core tools):
+
+| Tool | Replacement |
+|------|-------------|
+| `list_documents` | `search_documents` with filters |
+| `find_files` | `search_documents` finds content by meaning, not path |
+| `find_symbol` | `search_documents` already boosts title matches at 3x |
 
 ### Curate
 
@@ -364,12 +372,42 @@ DOCS_ROOT=./docs bun run serve:http     # HTTP (port 3100)
 DOCS_ROOT=./docs bun run index          # CLI: inspect indexed output
 ```
 
+## Structured Data
+
+doctree-mcp can index CSV and JSONL files alongside markdown. Each file becomes one document, each row/line becomes a tree node — searchable, navigable, and retrievable through the same tools.
+
+### CSV files
+
+Set `DOCS_GLOB=**/*.md,**/*.csv` to include CSV files. Column roles are auto-detected from header names:
+
+| Header pattern | Role | Example |
+|---------------|------|---------|
+| `issue key`, `key`, `id` | Row identity (used by `lookup_row`) | `PROJ-44` |
+| `summary`, `title`, `name` | Node title | `API Platform Readiness` |
+| `description`, `quick notes`, `objective` | Full-text searchable content | Free text |
+| `status`, `team`, `theme`, `architect` | Facet filters | `Done`, `Cloud Platform` |
+| `url`, `link` | External URL metadata | Issue tracker link |
+
+### JSONL files
+
+Set `DOCS_GLOB=**/*.md,**/*.jsonl` to include JSONL files. Schema auto-detected from first line's keys. Fields named `key`/`id` become the node title, `paths`/`pages` become relation content, `status`/`team`/`corpus` become facets.
+
+### Agent workflow with structured data
+
+```
+lookup_row("PROJ-44")                              → canonical record (O(1))
+search_documents("PROJ-44", limit: 5)              → related docs from JSONL indexes + markdown
+get_node_content(dor_doc_id, [relevant_sections])  → full document content
+```
+
+See [docs/specs/2026-04-17-structured-data.md](docs/specs/2026-04-17-structured-data.md) for the full design.
+
 ## Configuration Reference
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DOCS_ROOT` | `./docs` | Path to your markdown folder |
-| `DOCS_GLOB` | `**/*.md` | File glob pattern |
+| `DOCS_GLOB` | `**/*.md` | Comma-separated glob patterns (e.g. `**/*.md,**/*.csv,**/*.jsonl`) |
 | `DOCS_ROOTS` | — | Multiple weighted collections |
 | `MAX_DEPTH` | `6` | Max heading depth to index |
 | `SUMMARY_LENGTH` | `200` | Characters in node summaries |
@@ -378,6 +416,7 @@ DOCS_ROOT=./docs bun run index          # CLI: inspect indexed output
 | `WIKI_WRITE` | *(unset)* | Set to `1` to enable write tools |
 | `WIKI_ROOT` | `$DOCS_ROOT` | Filesystem root for wiki writes |
 | `WIKI_DUPLICATE_THRESHOLD` | `0.35` | Overlap ratio for duplicate warning |
+| `CSV_MAX_TEXT_LENGTH` | `2000` | Truncate long CSV text fields for BM25 indexing |
 
 Full details: [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
 

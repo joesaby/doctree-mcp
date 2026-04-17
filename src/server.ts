@@ -40,6 +40,16 @@ const config: IndexConfig = singleRootConfig(docs_root);
 config.max_depth = parseInt(process.env.MAX_DEPTH || "6");
 config.summary_length = parseInt(process.env.SUMMARY_LENGTH || "200");
 
+// Multi-glob support: DOCS_GLOB=**/*.md,**/*.csv,**/*.jsonl
+const docsGlob = process.env.DOCS_GLOB;
+if (docsGlob) {
+  const patterns = docsGlob.split(",").map(p => p.trim()).filter(Boolean);
+  if (patterns.length > 0) {
+    config.collections[0].glob_patterns = patterns;
+    config.collections[0].glob_pattern = undefined;
+  }
+}
+
 // ── Initialize store ─────────────────────────────────────────────────
 
 const store = new DocumentStore();
