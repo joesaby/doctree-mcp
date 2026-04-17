@@ -400,7 +400,7 @@ search_documents("PROJ-44", limit: 5)              → related docs from JSONL i
 get_node_content(dor_doc_id, [relevant_sections])  → full document content
 ```
 
-See [SPEC-structured-data.md](SPEC-structured-data.md) for the full design.
+See [docs/specs/2026-04-17-structured-data.md](docs/specs/2026-04-17-structured-data.md) for the full design.
 
 ## Configuration Reference
 
