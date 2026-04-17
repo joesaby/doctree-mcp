@@ -59,6 +59,10 @@ export class DocumentStore {
   // like "CLI" also match "command line interface"
   private glossary: Map<string, string[]> = new Map();
 
+  // ── Row index for O(1) key→row lookup (structured data) ─────────
+  // normalized key → { doc_id, node_id }
+  private rowIndex: Map<string, { doc_id: string; node_id: string }> = new Map();
+
   // ── Reference map for cross-document linking ────────────────────
   // basename(file_path) → { doc_id, tree }
   private refMap: Map<string, { doc_id: string; tree: TreeNode[] }> = new Map();
@@ -81,6 +85,7 @@ export class DocumentStore {
     this.buildFilterIndex();
     this.buildAutoGlossary(documents);
     this.buildRefMap();
+    this.buildRowIndex();
 
     console.log(
       `Store loaded: ${this.docs.size} docs, ${this.totalNodes} nodes, ` +
@@ -814,6 +819,44 @@ export class DocumentStore {
     if (added > 0) {
       console.log(`Auto-glossary: ${added} entries extracted from content`);
     }
+  }
+
+  // ── Row index for structured data ──────────────────────────────────
+
+  private buildRowIndex(): void {
+    this.rowIndex.clear();
+    for (const doc of this.docs.values()) {
+      const format = doc.meta.facets?.format;
+      if (!format || (!format.includes("csv") && !format.includes("jsonl"))) continue;
+
+      for (const node of doc.tree) {
+        if (node.level < 2) continue;
+        // Extract key: everything before " — " in the title
+        const dashIdx = node.title.indexOf(" — ");
+        const key = (dashIdx !== -1 ? node.title.slice(0, dashIdx) : node.title).trim().toUpperCase();
+        if (key && !this.rowIndex.has(key)) {
+          this.rowIndex.set(key, { doc_id: doc.meta.doc_id, node_id: node.node_id });
+        }
+      }
+    }
+    if (this.rowIndex.size > 0) {
+      console.log(`Row index: ${this.rowIndex.size} keys from structured data`);
+    }
+  }
+
+  lookupRow(key: string, docId?: string): { doc_id: string; node: TreeNode; facets: Record<string, string[]> } | null {
+    const normalizedKey = key.trim().toUpperCase();
+    const entry = this.rowIndex.get(normalizedKey);
+    if (!entry) return null;
+    if (docId && entry.doc_id !== docId) return null;
+
+    const doc = this.docs.get(entry.doc_id);
+    if (!doc) return null;
+
+    const node = doc.tree.find(n => n.node_id === entry.node_id);
+    if (!node) return null;
+
+    return { doc_id: entry.doc_id, node, facets: doc.meta.facets };
   }
 
   // ── Reference map ─────────────────────────────────────────────────

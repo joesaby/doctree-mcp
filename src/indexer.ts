@@ -627,17 +627,29 @@ export async function indexFile(
 export async function indexCollection(
   collection: CollectionConfig
 ): Promise<IndexedDocument[]> {
-  const { root, name, glob_pattern } = collection;
-  const pattern = glob_pattern || "**/*.md";
+  const { root, name, glob_pattern, glob_patterns } = collection;
+  const patterns = glob_patterns || [glob_pattern || "**/*.md"];
 
-  const glob = new Bun.Glob(pattern);
   const files: string[] = [];
+  const seen = new Set<string>();
 
-  for await (const entry of glob.scan({ cwd: root, absolute: true })) {
-    files.push(entry);
+  for (const pattern of patterns) {
+    const glob = new Bun.Glob(pattern);
+    for await (const entry of glob.scan({ cwd: root, absolute: true })) {
+      if (!seen.has(entry)) {
+        seen.add(entry);
+        files.push(entry);
+      }
+    }
   }
 
-  console.log(`[${name}] Found ${files.length} markdown files in ${root}`);
+  const mdCount = files.filter(f => f.endsWith(".md")).length;
+  const csvCount = files.filter(f => f.endsWith(".csv")).length;
+  const jsonlCount = files.filter(f => f.endsWith(".jsonl")).length;
+  const parts = [`${mdCount} md`];
+  if (csvCount > 0) parts.push(`${csvCount} csv`);
+  if (jsonlCount > 0) parts.push(`${jsonlCount} jsonl`);
+  console.log(`[${name}] Found ${files.length} files (${parts.join(", ")}) in ${root}`);
 
   const BATCH_SIZE = 50;
   const results: IndexedDocument[] = [];
@@ -645,12 +657,17 @@ export async function indexCollection(
   for (let i = 0; i < files.length; i += BATCH_SIZE) {
     const batch = files.slice(i, i + BATCH_SIZE);
     const indexed = await Promise.all(
-      batch.map((f) =>
-        indexFile(f, root, name).catch((err) => {
+      batch.map((f) => {
+        const ext = extname(f).toLowerCase();
+        let indexFn: (f: string, r: string, c: string) => Promise<IndexedDocument>;
+        if (ext === ".csv") indexFn = indexCsvFile;
+        else if (ext === ".jsonl") indexFn = indexJsonlFile;
+        else indexFn = indexFile;
+        return indexFn(f, root, name).catch((err) => {
           console.warn(`Failed to index ${f}: ${err.message}`);
           return null;
-        })
-      )
+        });
+      })
     );
     results.push(...(indexed.filter(Boolean) as IndexedDocument[]));
 
@@ -698,6 +715,455 @@ export async function indexDirectory(config: {
     glob_pattern: config.glob_pattern || "**/*.md",
   };
   return indexCollection(collection);
+}
+
+// ── CSV parser (state machine — no external deps) ──────────────────
+
+interface CsvColumnRoles {
+  id: number;
+  title: number;
+  text: number[];
+  facets: number[];
+  url: number;
+  relation: number[];
+}
+
+function detectCsvColumnRoles(headers: string[]): CsvColumnRoles {
+  const roles: CsvColumnRoles = { id: 0, title: -1, text: [], facets: [], url: -1, relation: [] };
+
+  for (let i = 0; i < headers.length; i++) {
+    const h = headers[i].trim().toLowerCase();
+
+    if (roles.id === 0 && /^(issue.?key|key|id)$/i.test(h)) roles.id = i;
+    else if (roles.title === -1 && /^(summary|title|name)$/i.test(h)) roles.title = i;
+    else if (/^(description|quick.?notes|business.?justification|objective)$/i.test(h)) roles.text.push(i);
+    else if (/^(status|team|theme|architect|target.?quarter|t-shirt|dor(?!\s*link))$/i.test(h)) roles.facets.push(i);
+    else if (roles.url === -1 && /^(url|link|href)$/i.test(h)) roles.url = i;
+    else if (/^(issue.?links?|child.?issues?|dor.?link)$/i.test(h)) roles.relation.push(i);
+  }
+
+  if (roles.title === -1) roles.title = roles.id;
+  // summary column is both title and text
+  const summaryIdx = headers.findIndex(h => /^summary$/i.test(h.trim()));
+  if (summaryIdx !== -1 && !roles.text.includes(summaryIdx)) roles.text.push(summaryIdx);
+
+  return roles;
+}
+
+function parseCsvLine(line: string): string[] {
+  const fields: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (i + 1 < line.length && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ",") {
+        fields.push(current);
+        current = "";
+      } else {
+        current += ch;
+      }
+    }
+  }
+  fields.push(current);
+  return fields;
+}
+
+function parseCsvMultiline(text: string): string[][] {
+  const rows: string[][] = [];
+  const lines = text.split("\n");
+  let currentLine = "";
+  let inQuotes = false;
+
+  for (const line of lines) {
+    if (!inQuotes) {
+      currentLine = line;
+    } else {
+      currentLine += "\n" + line;
+    }
+
+    let quoteCount = 0;
+    for (const ch of currentLine) {
+      if (ch === '"') quoteCount++;
+    }
+    inQuotes = quoteCount % 2 !== 0;
+
+    if (!inQuotes) {
+      rows.push(parseCsvLine(currentLine));
+      currentLine = "";
+    }
+  }
+
+  if (currentLine) {
+    rows.push(parseCsvLine(currentLine));
+  }
+
+  return rows;
+}
+
+const CSV_MAX_TEXT_LENGTH = parseInt(process.env.CSV_MAX_TEXT_LENGTH || "2000");
+
+export async function indexCsvFile(
+  filePath: string,
+  docsRoot: string,
+  collectionName: string = "docs"
+): Promise<IndexedDocument> {
+  const raw = await Bun.file(filePath).text();
+  const relPath = relative(docsRoot, filePath);
+  const doc_id = `${collectionName}:${relPath.replace(/\.(csv|jsonl)$/i, "").replace(/[/\\]/g, ":")}`;
+
+  const rows = parseCsvMultiline(raw);
+  if (rows.length < 2) {
+    return emptyDocument(doc_id, relPath, collectionName, filePath, raw);
+  }
+
+  const headers = rows[0].map(h => h.trim());
+  const roles = detectCsvColumnRoles(headers);
+
+  const tree: TreeNode[] = [];
+  let nodeCounter = 0;
+
+  // Synthetic root node
+  nodeCounter++;
+  const rootId = makeNodeId(doc_id, nodeCounter);
+  const rootNode: TreeNode = {
+    node_id: rootId,
+    title: basename(filePath, extname(filePath)),
+    level: 1,
+    parent_id: null,
+    children: [],
+    content: `${rows.length - 1} rows, ${headers.length} columns: ${headers.join(", ")}`,
+    summary: `${rows.length - 1} rows from ${basename(filePath)}`,
+    word_count: 0,
+    line_start: 1,
+    line_end: 1,
+  };
+  tree.push(rootNode);
+
+  const allFacets: Record<string, Set<string>> = {};
+
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    if (row.length < 2 || row.every(c => !c.trim())) continue;
+
+    nodeCounter++;
+    const nodeId = makeNodeId(doc_id, nodeCounter);
+    rootNode.children.push(nodeId);
+
+    const keyVal = (row[roles.id] || "").trim();
+    const titleVal = (row[roles.title] || keyVal || `Row ${r}`).trim();
+    const nodeTitle = keyVal && keyVal !== titleVal ? `${keyVal} — ${titleVal}` : titleVal;
+
+    // Build content
+    const contentParts: string[] = [];
+    if (keyVal) contentParts.push(`Issue Key: ${keyVal}`);
+
+    // Facet values inline
+    const facetLine: string[] = [];
+    for (const fi of roles.facets) {
+      const val = (row[fi] || "").trim();
+      if (val) {
+        facetLine.push(`${headers[fi]}: ${val}`);
+        const key = headers[fi].toLowerCase().replace(/[^a-z0-9]+/g, "_");
+        if (!allFacets[key]) allFacets[key] = new Set();
+        allFacets[key].add(val);
+      }
+    }
+    if (facetLine.length) contentParts.push(facetLine.join(" | "));
+
+    if (roles.url !== -1) {
+      const urlVal = (row[roles.url] || "").trim();
+      if (urlVal) contentParts.push(`URL: ${urlVal}`);
+    }
+
+    contentParts.push("");
+
+    // Text fields (truncated for indexing)
+    for (const ti of roles.text) {
+      const text = (row[ti] || "").trim();
+      if (text) {
+        const truncated = text.length > CSV_MAX_TEXT_LENGTH ? text.slice(0, CSV_MAX_TEXT_LENGTH) + "…" : text;
+        contentParts.push(truncated);
+      }
+    }
+
+    // Relations
+    for (const ri of roles.relation) {
+      const relText = (row[ri] || "").trim();
+      if (relText) contentParts.push(`${headers[ri]}: ${relText}`);
+    }
+
+    const content = contentParts.join("\n").trim();
+
+    tree.push({
+      node_id: nodeId,
+      title: nodeTitle,
+      level: 2,
+      parent_id: rootId,
+      children: [],
+      content,
+      summary: extractFirstSentence(content, 200),
+      word_count: content.split(/\s+/).filter(Boolean).length,
+      line_start: r + 1,
+      line_end: r + 1,
+    });
+  }
+
+  rootNode.word_count = tree.reduce((s, n) => s + n.word_count, 0);
+
+  const facets: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(allFacets)) {
+    facets[k] = [...v];
+  }
+  facets["format"] = ["csv"];
+
+  const fstat = await stat(filePath);
+  const meta: DocumentMeta = {
+    doc_id,
+    file_path: relPath,
+    title: basename(filePath, extname(filePath)),
+    description: `${rows.length - 1} rows, ${headers.length} columns`,
+    word_count: rootNode.word_count,
+    heading_count: tree.length,
+    max_depth: 2,
+    last_modified: fstat.mtime.toISOString(),
+    tags: [],
+    content_hash: computeContentHash(raw),
+    collection: collectionName,
+    facets,
+    references: [],
+  };
+
+  return { meta, tree, root_nodes: [rootId] };
+}
+
+// ── JSONL parser ────────────────────────────────────────────────────
+
+interface JsonlFieldRoles {
+  key: string | null;
+  title: string | null;
+  text: string[];
+  relation: string[];
+  facets: string[];
+}
+
+function detectJsonlFieldRoles(obj: Record<string, unknown>): JsonlFieldRoles {
+  const keys = Object.keys(obj);
+  const roles: JsonlFieldRoles = { key: null, title: null, text: [], relation: [], facets: [] };
+
+  for (const k of keys) {
+    const kl = k.toLowerCase();
+    if (!roles.key && /^(key|id|issue_key)$/.test(kl)) roles.key = k;
+    else if (!roles.title && /^(summary|title|description|name)$/.test(kl)) roles.title = k;
+    else if (/^(paths?|pages?)$/.test(kl)) roles.relation.push(k);
+    else if (/^(status|team|corpus|type|category)$/.test(kl)) roles.facets.push(k);
+    else roles.text.push(k);
+  }
+
+  return roles;
+}
+
+export async function indexJsonlFile(
+  filePath: string,
+  docsRoot: string,
+  collectionName: string = "docs"
+): Promise<IndexedDocument> {
+  const raw = await Bun.file(filePath).text();
+  const relPath = relative(docsRoot, filePath);
+  const doc_id = `${collectionName}:${relPath.replace(/\.(csv|jsonl)$/i, "").replace(/[/\\]/g, ":")}`;
+
+  const lines = raw.split("\n").filter(l => l.trim());
+  if (lines.length === 0) {
+    return emptyDocument(doc_id, relPath, collectionName, filePath, raw);
+  }
+
+  // Detect roles from first line
+  let firstObj: Record<string, unknown>;
+  try {
+    firstObj = JSON.parse(lines[0]);
+  } catch {
+    return emptyDocument(doc_id, relPath, collectionName, filePath, raw);
+  }
+  const roles = detectJsonlFieldRoles(firstObj);
+
+  const tree: TreeNode[] = [];
+  let nodeCounter = 0;
+
+  // Synthetic root
+  nodeCounter++;
+  const rootId = makeNodeId(doc_id, nodeCounter);
+  const rootNode: TreeNode = {
+    node_id: rootId,
+    title: basename(filePath, extname(filePath)),
+    level: 1,
+    parent_id: null,
+    children: [],
+    content: `${lines.length} records`,
+    summary: `${lines.length} records from ${basename(filePath)}`,
+    word_count: 0,
+    line_start: 1,
+    line_end: 1,
+  };
+  tree.push(rootNode);
+
+  const allFacets: Record<string, Set<string>> = {};
+
+  for (let i = 0; i < lines.length; i++) {
+    let obj: Record<string, unknown>;
+    try {
+      obj = JSON.parse(lines[i]);
+    } catch {
+      continue;
+    }
+
+    nodeCounter++;
+    const nodeId = makeNodeId(doc_id, nodeCounter);
+    rootNode.children.push(nodeId);
+
+    const keyVal = roles.key ? String(obj[roles.key] || "") : `row-${i + 1}`;
+    const titleVal = roles.title ? String(obj[roles.title] || keyVal) : keyVal;
+    const nodeTitle = keyVal && keyVal !== titleVal ? `${keyVal} — ${titleVal}` : keyVal;
+
+    const contentParts: string[] = [];
+    if (keyVal) contentParts.push(keyVal);
+
+    // Facets
+    const facetLine: string[] = [];
+    for (const fk of roles.facets) {
+      const val = obj[fk];
+      if (val !== undefined && val !== null && val !== "") {
+        const strVal = String(val);
+        facetLine.push(`${fk}: ${strVal}`);
+        const normKey = fk.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+        if (!allFacets[normKey]) allFacets[normKey] = new Set();
+        allFacets[normKey].add(strVal);
+      }
+    }
+    if (facetLine.length) contentParts.push(facetLine.join(" | "));
+
+    // Title/text
+    if (roles.title && obj[roles.title]) {
+      contentParts.push(String(obj[roles.title]));
+    }
+    for (const tk of roles.text) {
+      const val = obj[tk];
+      if (val !== undefined && val !== null && val !== "") {
+        if (typeof val === "number") {
+          contentParts.push(`${tk}: ${val}`);
+        } else {
+          contentParts.push(String(val));
+        }
+      }
+    }
+
+    // Relations (arrays of paths/pages)
+    for (const rk of roles.relation) {
+      const val = obj[rk];
+      if (Array.isArray(val) && val.length > 0) {
+        const items = val.map(v => typeof v === "string" ? v : (v as any).path || (v as any).title || JSON.stringify(v));
+        contentParts.push(`Related docs: ${items.join(", ")}`);
+      }
+    }
+
+    const content = contentParts.join("\n").trim();
+
+    tree.push({
+      node_id: nodeId,
+      title: nodeTitle,
+      level: 2,
+      parent_id: rootId,
+      children: [],
+      content,
+      summary: extractFirstSentence(content, 200),
+      word_count: content.split(/\s+/).filter(Boolean).length,
+      line_start: i + 1,
+      line_end: i + 1,
+    });
+  }
+
+  rootNode.word_count = tree.reduce((s, n) => s + n.word_count, 0);
+
+  const facets: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(allFacets)) {
+    facets[k] = [...v];
+  }
+  facets["format"] = ["jsonl"];
+
+  const fstat = await stat(filePath);
+  const meta: DocumentMeta = {
+    doc_id,
+    file_path: relPath,
+    title: basename(filePath, extname(filePath)),
+    description: `${lines.length} records`,
+    word_count: rootNode.word_count,
+    heading_count: tree.length,
+    max_depth: 2,
+    last_modified: fstat.mtime.toISOString(),
+    tags: [],
+    content_hash: computeContentHash(raw),
+    collection: collectionName,
+    facets,
+    references: [],
+  };
+
+  return { meta, tree, root_nodes: [rootId] };
+}
+
+// ── Empty document fallback ────────────────────────────────────────
+
+async function emptyDocument(
+  doc_id: string,
+  relPath: string,
+  collectionName: string,
+  filePath: string,
+  raw: string
+): Promise<IndexedDocument> {
+  const fstat = await stat(filePath);
+  const rootId = makeNodeId(doc_id, 1);
+  return {
+    meta: {
+      doc_id,
+      file_path: relPath,
+      title: basename(filePath, extname(filePath)),
+      description: "Empty or unparseable file",
+      word_count: 0,
+      heading_count: 1,
+      max_depth: 1,
+      last_modified: fstat.mtime.toISOString(),
+      tags: [],
+      content_hash: computeContentHash(raw),
+      collection: collectionName,
+      facets: {},
+      references: [],
+    },
+    tree: [{
+      node_id: rootId,
+      title: basename(filePath, extname(filePath)),
+      level: 1,
+      parent_id: null,
+      children: [],
+      content: "",
+      summary: "",
+      word_count: 0,
+      line_start: 1,
+      line_end: 1,
+    }],
+    root_nodes: [rootId],
+  };
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────

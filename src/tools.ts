@@ -347,6 +347,42 @@ export function registerTools(
     }
   );
 
+  // ── Tool 6: lookup_row ─────────────────────────────────────────────
+  server.tool(
+    "lookup_row",
+    "Look up a structured data row by exact key (e.g. PROJ-44, ITEM-1234). Returns the canonical record from CSV/JSONL data. Use this when you have a known identifier — it's O(1) and deterministic, unlike search_documents which returns ranked results.",
+    {
+      key: z.string().describe("Exact row key to look up (case-insensitive)"),
+      doc_id: z
+        .string()
+        .optional()
+        .describe("Narrow lookup to a specific dataset document"),
+    },
+    async ({ key, doc_id }) => {
+      const result = store.lookupRow(key, doc_id);
+
+      if (!result) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `No row found for key "${key}".${doc_id ? ` (searched in ${doc_id})` : ""} Try search_documents("${key}") for a broader search.`,
+            },
+          ],
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `━━━ ${result.node.title} [${result.node.node_id}] ━━━\nSource: ${result.doc_id}\n\n${result.node.content}\n\nUse search_documents("${key}") to find related documents across all collections.`,
+          },
+        ],
+      };
+    }
+  );
+
   // ── Wiki curation tools (opt-in via WIKI_WRITE=1) ─────────────────
   if (options?.wiki) {
     registerCurationTools(server, store, options.wiki);

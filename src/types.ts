@@ -217,6 +217,7 @@ export interface CollectionConfig {
   root: string;
   weight: number; // multiplied into BM25 scores. Pagefind's indexWeight equivalent.
   glob_pattern?: string;
+  glob_patterns?: string[];
 }
 
 /** Main configuration */
