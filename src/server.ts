@@ -98,39 +98,42 @@ server.resource("index-stats", "md-tree://stats", async (uri) => {
 // ── Startup ──────────────────────────────────────────────────────────
 
 async function main() {
-  console.error(`[doctree-mcp] Indexing documents from: ${docs_root}`);
-
-  // Index all documents at startup
-  const startTime = Date.now();
-  const documents = await indexAllCollections(config);
-  store.load(documents);
-
-  // Load glossary if present (glossary.json in docs root)
-  const glossaryPath = process.env.GLOSSARY_PATH || join(docs_root, "glossary.json");
-  if (existsSync(glossaryPath)) {
-    try {
-      const glossaryData = await Bun.file(glossaryPath).json();
-      store.loadGlossary(glossaryData);
-      console.error(`[doctree-mcp] Glossary loaded from ${glossaryPath}`);
-    } catch (err: any) {
-      console.error(`[doctree-mcp] Warning: Failed to load glossary from ${glossaryPath}: ${err.message}`);
-    }
-  }
-
-  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  const stats = store.getStats();
-  console.error(
-    `[doctree-mcp] Ready in ${elapsed}s — ${stats.document_count} docs, ${stats.total_nodes} sections, ${stats.indexed_terms} terms`
-  );
-
-  if (wiki) {
-    console.error(`[doctree-mcp] Wiki write enabled — root: ${wiki.root}`);
-  }
-
-  // Connect via stdio transport
+  // Connect via stdio transport first so the MCP handshake succeeds
+  // before the (potentially slow) indexing phase begins.
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("[doctree-mcp] MCP server running on stdio");
+
+  // Defer indexing to the next tick so the transport can process
+  // the MCP handshake while indexing runs.
+  setTimeout(async () => {
+    console.error(`[doctree-mcp] Indexing documents from: ${docs_root}`);
+
+    const startTime = Date.now();
+    const documents = await indexAllCollections(config);
+    store.load(documents);
+
+    const glossaryPath = process.env.GLOSSARY_PATH || join(docs_root, "glossary.json");
+    if (existsSync(glossaryPath)) {
+      try {
+        const glossaryData = await Bun.file(glossaryPath).json();
+        store.loadGlossary(glossaryData);
+        console.error(`[doctree-mcp] Glossary loaded from ${glossaryPath}`);
+      } catch (err: any) {
+        console.error(`[doctree-mcp] Warning: Failed to load glossary from ${glossaryPath}: ${err.message}`);
+      }
+    }
+
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    const stats = store.getStats();
+    console.error(
+      `[doctree-mcp] Ready in ${elapsed}s — ${stats.document_count} docs, ${stats.total_nodes} sections, ${stats.indexed_terms} terms`
+    );
+
+    if (wiki) {
+      console.error(`[doctree-mcp] Wiki write enabled — root: ${wiki.root}`);
+    }
+  }, 0);
 }
 
 main().catch((err) => {
