@@ -98,14 +98,18 @@ server.resource("index-stats", "md-tree://stats", async (uri) => {
 // ── Startup ──────────────────────────────────────────────────────────
 
 async function main() {
+  // Connect via stdio transport first so the MCP handshake succeeds
+  // before the (potentially slow) indexing phase begins.
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error("[doctree-mcp] MCP server running on stdio");
+
   console.error(`[doctree-mcp] Indexing documents from: ${docs_root}`);
 
-  // Index all documents at startup
   const startTime = Date.now();
   const documents = await indexAllCollections(config);
   store.load(documents);
 
-  // Load glossary if present (glossary.json in docs root)
   const glossaryPath = process.env.GLOSSARY_PATH || join(docs_root, "glossary.json");
   if (existsSync(glossaryPath)) {
     try {
@@ -126,11 +130,6 @@ async function main() {
   if (wiki) {
     console.error(`[doctree-mcp] Wiki write enabled — root: ${wiki.root}`);
   }
-
-  // Connect via stdio transport
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("[doctree-mcp] MCP server running on stdio");
 }
 
 main().catch((err) => {
