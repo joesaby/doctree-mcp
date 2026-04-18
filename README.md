@@ -4,6 +4,8 @@ Give your AI agent a markdown knowledge base it can search, browse, and write to
 
 doctree-mcp is an [MCP](https://modelcontextprotocol.io/) server that indexes your markdown, CSV, and JSONL files and exposes them as structured tools. Your agent gets BM25 search, a navigable table of contents, exact key-based row lookup for structured data, and (optionally) the ability to write and maintain docs.
 
+**The pitch in one line:** MCP provides the structural primitives (a navigable tree + BM25 + glossary), the included skills provide the procedural knowledge (how to walk the tree), and together the agent behaves like a trained research librarian — not a one-shot searcher. See [The Skill + MCP Pattern](#the-skill--mcp-pattern).
+
 ---
 
 ## Quick Start
@@ -305,6 +307,62 @@ Agent: I need to understand the token refresh flow.
 
 ---
 
+## The Skill + MCP Pattern
+
+Most retrieval tools hand the agent a search box and hope for the best. doctree-mcp hands it a **tree**, and the bundled skills teach it how to walk one.
+
+- **MCP = structural primitives.** `search_documents`, `get_tree`, `navigate_tree`, `get_node_content`, `lookup_row` return tree positions the agent can reason over — not finished answers.
+- **Skills = procedural knowledge.** `/doc-read`, `/doc-write`, `/doc-lint` encode breadcrumb-style drill-down: search → outline → navigate → retrieve. The agent learns the *policy*, not just the API.
+
+That exact pairing doesn't exist cleanly elsewhere:
+
+| Approach | Primitive the agent sees | What the skill teaches | Gap |
+|---|---|---|---|
+| Managed hybrid RAG (Cloudflare AI Search, Nia) | Flat chunks + similarity score | — (no skill) | Black-box score, no audit trail |
+| Tool-returns-answer (Context7) | 2 tools returning finished answers | Query shape | Agent can't reason about what was skipped |
+| Skill-over-CLI (QMD) | CLI over flat search | Query expansion | No tree to navigate |
+| **doctree-mcp + `/doc-read`** | **Navigable tree** | **Breadcrumb drill-down, multi-instance routing, wiki compilation** | — |
+
+### Why iterative retrieval wins as a prestige pattern
+
+- **Context rot is real.** Stuffing a 1M-token window with retrieved chunks degrades output. Breadcrumb navigation keeps working memory small — the agent pulls only the subtree it needs.
+- **Auditability is shippable.** `search_documents → get_tree → navigate_tree → get_node_content` is a replayable trail a human reviewer can read. A cosine-similarity score is not. Regulated industries (finance, health, legal) can ship the former.
+- **Fewer, navigable primitives beat tool sprawl.** The same bet Cloudflare made with Code Mode: progressive disclosure over granular tool catalogs.
+
+### Multi-instance: client-side federation via skills
+
+One skill, many doctree instances, one agent. The skill encodes the **routing policy**; the MCP config just lists the instances. Add or remove an instance without editing the skill:
+
+```json
+{
+  "mcpServers": {
+    "wiki":    { "command": "bunx", "args": ["doctree-mcp"], "env": { "DOCS_ROOT": "./wiki" } },
+    "api":     { "command": "bunx", "args": ["doctree-mcp"], "env": { "DOCS_ROOT": "./api-docs" } },
+    "tickets": { "command": "bunx", "args": ["doctree-mcp"], "env": { "DOCS_GLOB": "**/*.csv", "DOCS_ROOT": "./tickets" } }
+  }
+}
+```
+
+```
+Agent (guided by /doc-read):
+  1. "This is an architecture question → route to `wiki`."
+  2. search_documents on wiki  → get_tree → navigate_tree.
+  3. "Needs the ticket that drove it → lookup_row on `tickets`."
+  4. Compose answer with breadcrumb citations from both.
+```
+
+Server-side federation (e.g. `instance_ids: [...]`) is faster but hides the routing decision inside the server. Client-side federation through skills keeps the decision **legible, portable across MCP clients, and under version control with the rest of the repo**.
+
+### Where this pattern fits in the market
+
+- **Near-term (0–12mo):** managed hybrid RAG wins the commodity lane — one API call, no infra. Fine for "just index our docs."
+- **Medium-term (12–24mo):** iterative breadcrumb retrieval becomes the prestige pattern — pushed by context rot, audit requirements, and tool sprawl fatigue.
+- **Long-term:** the split hardens. Managed hybrid on one side, agentic iterative retrieval on the other. The squeezed middle — local hybrid with local rerankers — has neither one-click convenience nor iterative transparency.
+
+doctree-mcp is explicitly aimed at the agentic iterative side: local, auditable, composable, skill-teachable.
+
+---
+
 ## The LLM Wiki Pattern
 
 doctree-mcp supports using your agent as a wiki maintainer — inspired by [Andrej Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f):
@@ -354,11 +412,17 @@ doctree-mcp also **auto-extracts** acronym definitions — patterns like "TLS (T
 
 ## Multiple Collections
 
+Two ways to combine sources — pick based on whether you want **one ranked search** or **the agent to route**:
+
+**Weighted merge (one instance, one search):**
+
 ```json
 { "env": { "DOCS_ROOTS": "./wiki:1.0,./api-docs:0.8,./meeting-notes:0.3" } }
 ```
 
 Higher-weighted collections rank higher in search results.
+
+**Separate instances (one agent, many trees):** run a doctree-mcp per corpus and let the `/doc-read` skill route between them. See [Multi-instance: client-side federation via skills](#multi-instance-client-side-federation-via-skills).
 
 ## Running from Source
 
