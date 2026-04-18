@@ -1,449 +1,224 @@
 # doctree-mcp
 
-Give your AI agent a markdown knowledge base it can search, browse, and write to — no vector DB, no embeddings, no LLM calls at index time.
+**Agentic document retrieval over markdown, CSV, and JSONL.** BM25 + tree navigation via [MCP](https://modelcontextprotocol.io/) — no vector DB, no embeddings, no LLM calls at index time.
 
-doctree-mcp is an [MCP](https://modelcontextprotocol.io/) server that indexes your markdown, CSV, and JSONL files and exposes them as structured tools. Your agent gets BM25 search, a navigable table of contents, exact key-based row lookup for structured data, and (optionally) the ability to write and maintain docs.
+**The pitch:** MCP provides the structural primitives (a navigable tree, BM25, glossary, row lookup). The bundled skills provide the procedural knowledge (how to walk that tree). Together the agent behaves like a trained research librarian — not a one-shot searcher. See [The Skill + MCP Pattern](#the-skill--mcp-pattern).
 
 ---
 
 ## Quick Start
 
-### Already have docs?
-
-1. Point `DOCS_ROOT` at your markdown folder in your AI tool's MCP config (see [Setup by AI Tool](#setup-by-ai-tool) below)
-2. Restart your AI tool
-3. Ask your agent: *"Search the docs for X"* or use the `doc-read` MCP prompt
-
-### Starting fresh? (LLM Wiki)
-
-Run the init command in your project root:
+**Have docs already?** Point a client at them:
 
 ```bash
-bunx doctree-mcp init
+# In your AI tool's MCP config — see docs/CLIENTS.md for per-tool snippets
+{ "mcpServers": { "doctree": {
+    "command": "bunx", "args": ["doctree-mcp"],
+    "env": { "DOCS_ROOT": "./docs", "WIKI_WRITE": "1" }
+} } }
 ```
 
-This scaffolds the [Karpathy LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) three-layer structure and configures your AI tool(s) automatically:
+Restart the tool → ask *"search the docs for X"* or invoke the `doc-read` prompt.
 
-- Creates `docs/wiki/` (LLM-maintained) and `docs/raw-sources/` (your inputs)
-- Writes MCP config for your selected AI tool(s)
-- Installs a post-write lint hook so your agent gets health warnings automatically
-- Appends wiki conventions to `CLAUDE.md` / `AGENTS.md` / `.cursor/rules/`
+**Starting fresh?** Scaffold a Karpathy-style [LLM wiki](./docs/LLM-WIKI-GUIDE.md):
 
 ```bash
-bunx doctree-mcp init --all     # configure all supported tools
-bunx doctree-mcp init --dry-run # preview without writing
+bunx doctree-mcp init          # configure current tool
+bunx doctree-mcp init --all    # configure every supported client
+bunx doctree-mcp init --dry-run
 ```
 
-See [docs/LLM-WIKI-GUIDE.md](docs/LLM-WIKI-GUIDE.md) for the full walkthrough.
+Creates `docs/wiki/` (LLM-maintained) + `docs/raw-sources/` (your inputs), writes the MCP config, installs a post-write lint hook, appends wiki conventions to `CLAUDE.md` / `AGENTS.md` / `.cursor/rules/`.
 
 ---
 
-## Setup by AI Tool
+## Operation Modes
 
-All tools use the same MCP server. Replace `./docs` with your actual docs path.
+| Mode | Use when | Guide |
+|---|---|---|
+| **stdio** (default) | Local dev, agent on your machine | [Client setup](./docs/CLIENTS.md) |
+| **HTTP** (Streamable HTTP) | Teams, CI, hosted agents | [Deployment](./docs/DEPLOY.md) — Railway · Fly · Render · Cloudflare Containers · Docker |
+| **CLI** | `init`, `lint`, debug-index | [Operation modes](./docs/OPERATION-MODES.md#cli-mode) |
 
-### Claude Code
-
-Add `.mcp.json` to your project root:
-
-```json
-{
-  "mcpServers": {
-    "doctree": {
-      "command": "bunx",
-      "args": ["doctree-mcp"],
-      "env": {
-        "DOCS_ROOT": "./docs",
-        "WIKI_WRITE": "1"
-      }
-    }
-  }
-}
-```
-
-**Workflow prompts:** Use `/doc-read`, `/doc-write`, `/doc-lint` slash commands (skills included in this repo).
-
-**Lint hook** — add to `.claude/settings.json` to get health warnings after every write:
-
-```json
-{
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "write_wiki_entry",
-        "hooks": [{ "type": "command", "command": "bunx doctree-mcp lint" }]
-      }
-    ]
-  }
-}
-```
+Full decision tree: [Operation Modes](./docs/OPERATION-MODES.md).
 
 ---
 
-### Cursor
-
-Add `.cursor/mcp.json` to your project root:
-
-```json
-{
-  "mcpServers": {
-    "doctree": {
-      "command": "bunx",
-      "args": ["doctree-mcp"],
-      "env": {
-        "DOCS_ROOT": "./docs",
-        "WIKI_WRITE": "1"
-      }
-    }
-  }
-}
-```
-
-**Workflow prompts:** Use the `doc-read`, `doc-write`, and `doc-lint` MCP prompts from the chat panel.
-
-**Lint hook** — add to `.cursor/hooks.json`:
-
-```json
-{
-  "version": 1,
-  "hooks": {
-    "afterMCPExecution": [{ "command": "bunx doctree-mcp lint" }]
-  }
-}
-```
-
-**Rules** — commit `.cursor/rules/doctree-wiki.mdc` with your wiki conventions (created by `bunx doctree-mcp init`).
-
----
-
-### Windsurf
-
-Add `.windsurf/mcp.json` to your project root:
-
-```json
-{
-  "mcpServers": {
-    "doctree": {
-      "command": "bunx",
-      "args": ["doctree-mcp"],
-      "env": {
-        "DOCS_ROOT": "./docs",
-        "WIKI_WRITE": "1"
-      }
-    }
-  }
-}
-```
-
-**Workflow prompts:** Use the `doc-read`, `doc-write`, and `doc-lint` MCP prompts from Cascade.
-
-**Lint hook** — add to `.windsurf/hooks.json` (runs after all MCP calls — fast and safe):
-
-```json
-{
-  "hooks": {
-    "post_mcp_tool_use": [{ "command": "bunx doctree-mcp lint" }]
-  }
-}
-```
-
----
-
-### Codex CLI
-
-Add to `.codex/config.toml`:
-
-```toml
-[mcp_servers.doctree]
-command = "bunx"
-args = ["doctree-mcp"]
-
-[mcp_servers.doctree.env]
-DOCS_ROOT = "./docs"
-WIKI_WRITE = "1"
-```
-
-**Workflow prompts:** Use the `doc-read`, `doc-write`, and `doc-lint` MCP prompts.
-
-**Lint hook:** Codex hooks currently only intercept Bash tool calls. MCP tool interception is not yet supported — run `bunx doctree-mcp lint` manually or use the `doc-lint` prompt for audits.
-
----
-
-### OpenCode
-
-Add to `opencode.json`:
-
-```json
-{
-  "mcp": {
-    "servers": {
-      "doctree": {
-        "command": "bunx",
-        "args": ["doctree-mcp"],
-        "env": {
-          "DOCS_ROOT": "./docs",
-          "WIKI_WRITE": "1"
-        }
-      }
-    }
-  }
-}
-```
-
-**Workflow prompts:** Use the `doc-read`, `doc-write`, and `doc-lint` MCP prompts.
-
-**Lint plugin** — add `.opencode/plugins/doctree-lint.js` (created by `bunx doctree-mcp init`):
-
-```javascript
-export const DoctreeLintPlugin = async ({ $ }) => ({
-  "tool.execute.after": async (event) => {
-    if (event?.tool?.name === "write_wiki_entry") {
-      try { await $`bunx doctree-mcp lint`; } catch {}
-    }
-  },
-});
-```
-
----
-
-### Claude Desktop
-
-Add to your [Claude Desktop config](https://modelcontextprotocol.io/quickstart/user):
-
-```json
-{
-  "mcpServers": {
-    "doctree": {
-      "command": "bunx",
-      "args": ["doctree-mcp"],
-      "env": {
-        "DOCS_ROOT": "/absolute/path/to/your/docs"
-      }
-    }
-  }
-}
-```
-
-> Claude Desktop does not support project-level hook configs. Use `bunx doctree-mcp lint` manually or invoke the `doc-lint` MCP prompt for audits.
-
----
-
-## How It Works: Retrieve · Curate · Add
-
-### Retrieve
+## How It Works — Retrieve · Curate · Add
 
 ```
-Agent: I need to understand the token refresh flow.
+Agent: "How does token refresh work?"
 
 → search_documents("token refresh")
   #1  auth/middleware.md § Token Refresh Flow       score: 12.4
-  #2  auth/oauth.md § Refresh Token Lifecycle       score: 8.7
+  #2  auth/oauth.md       § Refresh Token Lifecycle  score: 8.7
 
 → get_tree("docs:auth:middleware")
-  [n1] # Auth Middleware (450 words)
-    [n4] ## Token Refresh Flow (180 words)
-      [n5] ### Automatic Refresh (90 words)
+  [n1] # Auth Middleware
+    [n4] ## Token Refresh Flow
+      [n5] ### Automatic Refresh
 
-→ navigate_tree("docs:auth:middleware", "n4")
-  Returns n4 + n5 — the full section and all subsections.
+→ navigate_tree("docs:auth:middleware", "n4")   ← n4 + descendants
 ```
 
-**5 core retrieval tools:**
+**Core read tools** (always on):
 
-| Tool | What it does |
-|------|-------------|
-| `search_documents` | BM25 keyword search with facet filters and glossary expansion. Works across markdown, CSV, and JSONL. |
-| `get_tree` | Table of contents — headings, word counts, summaries. |
-| `get_node_content` | Full text of specific sections by node ID. |
-| `navigate_tree` | A section and all its descendants in one call. |
-| `lookup_row` | O(1) exact key lookup for structured data rows (e.g. `PROJ-44`). See [Structured Data](#structured-data). |
+| Tool | Purpose |
+|---|---|
+| `search_documents` | BM25 keyword search + facet filters + glossary expansion (markdown · CSV · JSONL) |
+| `get_tree` | Table of contents — headings, word counts, summaries |
+| `get_node_content` | Full text of a specific section by node ID |
+| `navigate_tree` | A section plus all descendants in one call |
+| `lookup_row` | O(1) exact-key lookup for structured data rows (e.g. `PROJ-44`) |
 
-**Deprecated retrieval tools** (still functional, superseded by core tools):
+**Wiki write tools** (opt-in with `WIKI_WRITE=1`):
 
-| Tool | Replacement |
-|------|-------------|
-| `list_documents` | `search_documents` with filters |
-| `find_files` | `search_documents` finds content by meaning, not path |
-| `find_symbol` | `search_documents` already boosts title matches at 3x |
+| Tool | Purpose |
+|---|---|
+| `find_similar` | Duplicate detection with overlap ratios |
+| `draft_wiki_entry` | Scaffold: suggested path, inferred frontmatter, glossary hits |
+| `write_wiki_entry` | Validated write: path containment, schema, duplicate guards, dry-run |
 
-### Curate
+Safety: path containment · frontmatter validation · duplicate detection · dry-run · overwrite protection.
 
-```
-→ find_similar("JWT validation middleware checks the token signature...")
-  [overlap: 0.42] docs:auth:middleware — Auth Middleware
-    ⚠ Consider updating this doc instead of creating a new one.
-    → navigate_tree("docs:auth:middleware", "<root_node_id>") to read it
+Deprecated aliases (`list_documents`, `find_files`, `find_symbol`) are superseded by `search_documents` — still functional, no longer recommended.
 
-→ navigate_tree("docs:auth:middleware", "n1")   ← read existing doc
-→ write_wiki_entry(path: "auth/middleware.md", ..., overwrite: true)  ← merge + update
-```
+---
 
-### Add
+## The Skill + MCP Pattern
 
-```
-→ draft_wiki_entry(topic: "JWT Validation", raw_content: "...")
-  Suggested path:  docs/wiki/auth/jwt-validation.md
-  Inferred type:   reference
-  Suggested tags:  jwt, auth, middleware
+Most retrieval tools hand the agent a search box and hope for the best. doctree-mcp hands it a **tree**, and the bundled skills teach it how to walk one.
 
-→ write_wiki_entry(..., dry_run: true)   ← validate first
-  Status: dry_run_ok
+- **MCP = structural primitives.** `search_documents`, `get_tree`, `navigate_tree`, `get_node_content`, `lookup_row` return tree positions the agent reasons over — not finished answers.
+- **Skills = procedural knowledge.** `/doc-read`, `/doc-write`, `/doc-lint` encode breadcrumb drill-down: search → outline → navigate → retrieve. The agent learns the *policy*, not just the API.
 
-→ write_wiki_entry(..., dry_run: false)  ← write
-  Status: written  |  Doc ID: docs:auth:jwt-validation
-```
+That pairing doesn't exist cleanly elsewhere:
 
-**3 write tools** (enabled with `WIKI_WRITE=1`):
+| Approach | Primitive | Skill teaches | Gap |
+|---|---|---|---|
+| Managed hybrid RAG (Cloudflare AI Search, Nia) | Flat chunks + similarity | — | Black-box score, no audit trail |
+| Tool-returns-answer (Context7) | 2 tools returning answers | Query shape | Agent can't reason about skipped content |
+| Skill-over-CLI (QMD) | CLI over flat search | Query expansion | No tree to navigate |
+| **doctree-mcp + `/doc-read`** | **Navigable tree** | **Breadcrumbs, multi-instance routing, wiki compilation** | — |
 
-| Tool | What it does |
-|------|-------------|
-| `find_similar` | Duplicate detection with overlap ratios and update suggestions. |
-| `draft_wiki_entry` | Scaffold: suggested path, inferred frontmatter, glossary hits. |
-| `write_wiki_entry` | Validated write: path containment, schema checks, duplicate guards, dry-run. |
+**Why iterative retrieval wins:**
 
-**Safety:** path containment · frontmatter validation · duplicate detection · dry-run · overwrite protection
+- **Context rot.** Stuffing a 1M-token window with chunks degrades output. Breadcrumb navigation keeps working memory small.
+- **Auditability.** `search_documents → get_tree → navigate_tree → get_node_content` is a replayable trail. A cosine score is not. Regulated domains can ship the former.
+- **Progressive disclosure.** Fewer navigable primitives beat tool sprawl (cf. Cloudflare Code Mode).
+
+**Multi-instance = client-side federation.** Register several doctree servers under different names; the `/doc-read` skill encodes the routing policy. Add or remove instances without touching the skill. See [Client setup → Multi-instance routing](./docs/CLIENTS.md#multi-instance-routing).
 
 ---
 
 ## The LLM Wiki Pattern
 
-doctree-mcp supports using your agent as a wiki maintainer — inspired by [Andrej Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f):
-
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Raw Sources     │     │  The Wiki        │     │  The Schema      │
-│  (immutable)     │ ──→ │  (LLM-maintained)│ ←── │  (you define)    │
-│                  │     │                  │     │                  │
-│  meeting notes   │     │  structured docs │     │  CLAUDE.md rules │
-│  articles        │     │  runbooks        │     │  frontmatter     │
-│  incident logs   │     │  how-to guides   │     │  directory layout │
+│  Raw Sources    │     │  The Wiki        │     │  The Schema     │
+│  (immutable)    │ ──→ │  (LLM-maintained)│ ←── │  (you define)   │
+│  notes · logs   │     │  runbooks · refs │     │  CLAUDE.md rules │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
 ```
 
-See [docs/LLM-WIKI-GUIDE.md](docs/LLM-WIKI-GUIDE.md) for the full walkthrough.
+Inspired by [Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). Full walkthrough: [docs/LLM-WIKI-GUIDE.md](./docs/LLM-WIKI-GUIDE.md).
 
 ---
 
-## Frontmatter for Better Search
+## Configuration (summary)
 
 ```yaml
 ---
 title: "Descriptive Title"
-description: "One-line summary — boosts search ranking"
-tags: [relevant, terms, here]
-type: runbook            # runbook | guide | reference | tutorial | architecture | adr
-category: auth           # any domain grouping
+description: "One-line summary — boosts ranking"
+tags: [relevant, terms]
+type: runbook          # runbook | guide | reference | tutorial | architecture | adr
+category: auth
 ---
 ```
 
-All frontmatter fields (except reserved ones) become **filter facets**:
+All non-reserved frontmatter fields become filter facets:
 
 ```
-search_documents("auth", filters: { "type": "runbook", "tags": ["production"] })
+search_documents("auth", filters: { type: "runbook", tags: ["production"] })
 ```
 
-## Glossary & Query Expansion
+**Common env vars:**
 
-Place `glossary.json` in your docs root:
+| Variable | Default | Description |
+|---|---|---|
+| `DOCS_ROOT` | `./docs` | Docs folder |
+| `DOCS_GLOB` | `**/*.md` | Comma-separated globs (`**/*.md,**/*.csv,**/*.jsonl`) |
+| `DOCS_ROOTS` | — | Weighted multi-collection (`./wiki:1.0,./rfcs:0.5`) |
+| `PORT` | `3100` | HTTP mode port |
+| `WIKI_WRITE` | *(unset)* | `1` enables write tools |
+| `GLOSSARY_PATH` | `$DOCS_ROOT/glossary.json` | Query-expansion glossary |
+
+Full reference: [docs/CONFIGURATION.md](./docs/CONFIGURATION.md).
+
+**Glossary** — place `glossary.json` in docs root for bidirectional query expansion:
 
 ```json
 { "CLI": ["command line interface"], "K8s": ["kubernetes"] }
 ```
 
-doctree-mcp also **auto-extracts** acronym definitions — patterns like "TLS (Transport Layer Security)" are detected and added automatically.
+Acronym definitions like `"TLS (Transport Layer Security)"` are also auto-extracted.
 
-## Multiple Collections
+**Structured data** — CSV/JSONL files become documents where each row is a tree node. Column roles (id, title, description, facets, URL) are auto-detected from headers. See [docs/STRUCTURED-DATA.md](./docs/STRUCTURED-DATA.md).
 
-```json
-{ "env": { "DOCS_ROOTS": "./wiki:1.0,./api-docs:0.8,./meeting-notes:0.3" } }
-```
-
-Higher-weighted collections rank higher in search results.
+---
 
 ## Running from Source
 
 ```bash
 git clone https://github.com/joesaby/doctree-mcp.git
-cd doctree-mcp
-bun install
+cd doctree-mcp && bun install
 
 DOCS_ROOT=./docs bun run serve          # stdio
 DOCS_ROOT=./docs bun run serve:http     # HTTP (port 3100)
 DOCS_ROOT=./docs bun run index          # CLI: inspect indexed output
+bun test
 ```
 
-## Structured Data
-
-doctree-mcp can index CSV and JSONL files alongside markdown. Each file becomes one document, each row/line becomes a tree node — searchable, navigable, and retrievable through the same tools.
-
-### CSV files
-
-Set `DOCS_GLOB=**/*.md,**/*.csv` to include CSV files. Column roles are auto-detected from header names:
-
-| Header pattern | Role | Example |
-|---------------|------|---------|
-| `issue key`, `key`, `id` | Row identity (used by `lookup_row`) | `PROJ-44` |
-| `summary`, `title`, `name` | Node title | `API Platform Readiness` |
-| `description`, `quick notes`, `objective` | Full-text searchable content | Free text |
-| `status`, `team`, `theme`, `architect` | Facet filters | `Done`, `Cloud Platform` |
-| `url`, `link` | External URL metadata | Issue tracker link |
-
-### JSONL files
-
-Set `DOCS_GLOB=**/*.md,**/*.jsonl` to include JSONL files. Schema auto-detected from first line's keys. Fields named `key`/`id` become the node title, `paths`/`pages` become relation content, `status`/`team`/`corpus` become facets.
-
-### Agent workflow with structured data
-
-```
-lookup_row("PROJ-44")                              → canonical record (O(1))
-search_documents("PROJ-44", limit: 5)              → related docs from JSONL indexes + markdown
-get_node_content(dor_doc_id, [relevant_sections])  → full document content
-```
-
-See [docs/specs/2026-04-17-structured-data.md](docs/specs/2026-04-17-structured-data.md) for the full design.
-
-## Configuration Reference
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DOCS_ROOT` | `./docs` | Path to your markdown folder |
-| `DOCS_GLOB` | `**/*.md` | Comma-separated glob patterns (e.g. `**/*.md,**/*.csv,**/*.jsonl`) |
-| `DOCS_ROOTS` | — | Multiple weighted collections |
-| `MAX_DEPTH` | `6` | Max heading depth to index |
-| `SUMMARY_LENGTH` | `200` | Characters in node summaries |
-| `PORT` | `3100` | HTTP server port |
-| `GLOSSARY_PATH` | `$DOCS_ROOT/glossary.json` | Abbreviation glossary |
-| `WIKI_WRITE` | *(unset)* | Set to `1` to enable write tools |
-| `WIKI_ROOT` | `$DOCS_ROOT` | Filesystem root for wiki writes |
-| `WIKI_DUPLICATE_THRESHOLD` | `0.35` | Overlap ratio for duplicate warning |
-| `CSV_MAX_TEXT_LENGTH` | `2000` | Truncate long CSV text fields for BM25 indexing |
-
-Full details: [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
+---
 
 ## Performance
 
 | Operation | Time | Token cost |
-|-----------|------|------------|
-| Full index (900 docs) | 2-5s | 0 |
+|---|---|---|
+| Full index (900 docs) | 2–5s | 0 |
 | Incremental re-index | ~50ms | 0 |
-| Search | 5-30ms | ~300-1K tokens |
-| Tree outline | <1ms | ~200-800 tokens |
+| Search | 5–30ms | ~300–1K tokens |
+| Tree outline | <1ms | ~200–800 tokens |
+
+---
 
 ## Docs
 
-- [LLM Wiki Guide](docs/LLM-WIKI-GUIDE.md) — agent-maintained knowledge base walkthrough
-- [Architecture & Design](docs/DESIGN.md) — BM25 internals, tree navigation
-- [Configuration](docs/CONFIGURATION.md) — env vars, frontmatter, ranking tuning
-- [Competitive Analysis](docs/COMPETITIVE-ANALYSIS.md) — comparison with PageIndex, QMD, GitMCP
-- [Prompts source](src/prompts.ts) — MCP prompt templates (all clients)
-- [Skills: `/doc-read`](.claude/skills/doc-read/SKILL.md), [`/doc-write`](.claude/skills/doc-write/SKILL.md), [`/doc-lint`](.claude/skills/doc-lint/SKILL.md) — Claude Code slash commands
+**Setup & operation**
+- [Operation Modes](./docs/OPERATION-MODES.md) — stdio · HTTP · CLI
+- [Client Setup](./docs/CLIENTS.md) — Claude Code · Cursor · Windsurf · Codex · OpenCode · Claude Desktop
+- [Deployment](./docs/DEPLOY.md) — Railway · Fly.io · Render · Cloudflare Containers · Docker
+- [Configuration](./docs/CONFIGURATION.md) — env vars, frontmatter, ranking tuning
+
+**Patterns & concepts**
+- [LLM Wiki Guide](./docs/LLM-WIKI-GUIDE.md) — agent-maintained knowledge base walkthrough
+- [Structured Data](./docs/STRUCTURED-DATA.md) — CSV / JSONL indexing
+- [Architecture & Design](./docs/DESIGN.md) — BM25 internals, tree navigation
+- [Competitive Analysis](./docs/COMPETITIVE-ANALYSIS.md) — PageIndex, QMD, GitMCP, Context7, managed RAG
+
+**Source**
+- [Prompts](./src/prompts.ts) — MCP prompt templates
+- Skills: [`/doc-read`](./.claude/skills/doc-read/SKILL.md) · [`/doc-write`](./.claude/skills/doc-write/SKILL.md) · [`/doc-lint`](./.claude/skills/doc-lint/SKILL.md)
+
+---
 
 ## Standing on Shoulders
 
-- **[PageIndex](https://pageindex.ai)** — Hierarchical tree navigation
-- **[Pagefind](https://pagefind.app)** by **[CloudCannon](https://cloudcannon.com)** — BM25 scoring, positional index, filter facets
-- **[Bun.markdown](https://bun.sh)** by **[Oven](https://oven.sh)** — Native CommonMark parser
-- **[Andrej Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)** — The LLM-maintained wiki pattern
+- **[PageIndex](https://pageindex.ai)** — hierarchical tree navigation
+- **[Pagefind](https://pagefind.app)** by [CloudCannon](https://cloudcannon.com) — BM25 scoring, positional index, facets
+- **[Bun.markdown](https://bun.sh)** by [Oven](https://oven.sh) — native CommonMark parser
+- **[Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)** — the LLM-maintained wiki pattern
 
 ## License
 
