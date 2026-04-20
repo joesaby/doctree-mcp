@@ -1,0 +1,159 @@
+{
+  "corpus": {
+    "docs_root": "/Users/josesebastian/git/sbc-docs/src/content/docs",
+    "document_count": 918,
+    "total_nodes": 8672,
+    "indexed_terms": 42790
+  },
+  "questions": {
+    "total": 9301,
+    "by_strategy": {
+      "title_query": 2988,
+      "content_extract": 1997,
+      "description_query": 810,
+      "path_query": 918,
+      "multi_term_same_doc": 590,
+      "cross_doc": 798,
+      "fuzzy_typo": 700,
+      "negative": 500
+    },
+    "by_difficulty": {
+      "easy": 4298,
+      "medium": 3505,
+      "hard": 1498
+    }
+  },
+  "metrics": {
+    "overall": {
+      "count": 12989,
+      "hit_at_1": 0.5071983986450073,
+      "hit_at_5": 0.6972053275848795,
+      "hit_at_10": 0.762260374162753,
+      "mrr": 0.5878047908669896,
+      "node_accuracy": 0.6050504272846254
+    },
+    "by_strategy": {
+      "title_query": {
+        "count": 5976,
+        "hit_at_1": 0.625,
+        "hit_at_5": 0.786813922356091,
+        "hit_at_10": 0.840528781793842,
+        "mrr": 0.6942814910435406,
+        "node_accuracy": 0.8358433734939759
+      },
+      "content_extract": {
+        "count": 1997,
+        "hit_at_1": 0.3405107661492238,
+        "hit_at_5": 0.6534802203304958,
+        "hit_at_10": 0.7686529794692039,
+        "mrr": 0.4715305100507917,
+        "node_accuracy": 0.6960440660991487
+      },
+      "description_query": {
+        "count": 810,
+        "hit_at_1": 0.4666666666666667,
+        "hit_at_5": 0.7111111111111111,
+        "hit_at_10": 0.7962962962962963,
+        "mrr": 0.5696203213795801,
+        "node_accuracy": 0
+      },
+      "path_query": {
+        "count": 918,
+        "hit_at_1": 0.3093681917211329,
+        "hit_at_5": 0.5098039215686274,
+        "hit_at_10": 0.5446623093681917,
+        "mrr": 0.39860765293771805,
+        "node_accuracy": 0
+      },
+      "multi_term_same_doc": {
+        "count": 590,
+        "hit_at_1": 0.4186440677966102,
+        "hit_at_5": 0.7491525423728813,
+        "hit_at_10": 0.823728813559322,
+        "mrr": 0.5468274145816514,
+        "node_accuracy": 0
+      },
+      "cross_doc": {
+        "count": 798,
+        "hit_at_1": 0.041353383458646614,
+        "hit_at_5": 0.18045112781954886,
+        "hit_at_10": 0.2731829573934837,
+        "mrr": 0.10264699447030277,
+        "node_accuracy": 0
+      },
+      "fuzzy_typo": {
+        "count": 1400,
+        "hit_at_1": 0.5221428571428571,
+        "hit_at_5": 0.6564285714285715,
+        "hit_at_10": 0.71,
+        "mrr": 0.5803350340136055,
+        "node_accuracy": 0.6957142857142857
+      },
+      "negative": {
+        "count": 500,
+        "hit_at_1": 1,
+        "hit_at_5": 1,
+        "hit_at_10": 1,
+        "mrr": 1,
+        "node_accuracy": 1
+      }
+    },
+    "by_difficulty": {
+      "easy": {
+        "count": 7286,
+        "hit_at_1": 0.6331320340378809,
+        "hit_at_5": 0.7930277244029645,
+        "hit_at_10": 0.8465550370573703,
+        "mrr": 0.7014025049126607,
+        "node_accuracy": 0.7541861103486138
+      },
+      "medium": {
+        "count": 3505,
+        "hit_at_1": 0.3455064194008559,
+        "hit_at_5": 0.6319543509272468,
+        "hit_at_10": 0.7192582025677603,
+        "mrr": 0.46510597106174784,
+        "node_accuracy": 0.39657631954350925
+      },
+      "hard": {
+        "count": 2198,
+        "hit_at_1": 0.3475887170154686,
+        "hit_at_5": 0.48362147406733397,
+        "hit_at_10": 0.551410373066424,
+        "mrr": 0.4069068922685849,
+        "node_accuracy": 0.44313011828935395
+      }
+    },
+    "by_tool": {
+      "search": {
+        "count": 9301,
+        "hit_at_1": 0.4254381249328029,
+        "hit_at_5": 0.6436942264272659,
+        "hit_at_10": 0.7159445220943984,
+        "mrr": 0.5175391193641945,
+        "node_accuracy": 0.4970433286743361
+      },
+      "symbol": {
+        "count": 3688,
+        "hit_at_1": 0.7133947939262473,
+        "hit_at_5": 0.8321583514099783,
+        "hit_at_10": 0.8790672451193059,
+        "mrr": 0.7650122232551736,
+        "node_accuracy": 0.8774403470715835
+      }
+    }
+  },
+  "timing": {
+    "index_ms": 411,
+    "eval_ms": 159074,
+    "avg_query_ms": 12.243615565324545,
+    "p50_query_ms": 9.644082999991952,
+    "p95_query_ms": 37.10775000000285,
+    "p99_query_ms": 61.30249999999796
+  },
+  "glob_fallback": {
+    "total_triggered": 421,
+    "pct_of_searches": 0.04526395011289109,
+    "hit_rate_when_triggered": 0.9714964370546318
+  }
+}
