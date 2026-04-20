@@ -825,3 +825,87 @@ describe("stats", () => {
     expect(stats.collections).toContain("col2");
   });
 });
+
+// ── Search memory caps ─────────────────────────────────────────────
+
+describe("search memory caps", () => {
+  test("match_positions capped per node", () => {
+    const store = new DocumentStore();
+    // Build a node with a term repeated many times to generate many positions
+    const repeated = Array(200).fill("kubernetes deployment kubernetes").join(" ");
+    store.load([
+      makeDoc({
+        meta: { doc_id: "docs:big" },
+        tree: [
+          makeNode({
+            node_id: "docs:big:n1",
+            title: "Big Node",
+            content: repeated,
+            word_count: 600,
+          }),
+        ],
+      }),
+    ]);
+
+    const results = store.searchDocuments("kubernetes");
+    expect(results.length).toBeGreaterThan(0);
+    // Positions should be capped (MAX_POSITIONS_PER_NODE = 30)
+    expect(results[0].match_positions.length).toBeLessThanOrEqual(30);
+  });
+
+  test("search respects limit without building excess results", () => {
+    const store = new DocumentStore();
+    const docs = Array.from({ length: 50 }, (_, i) =>
+      makeDoc({
+        meta: {
+          doc_id: `docs:d${i}`,
+          file_path: `d${i}.md`,
+          title: `Document ${i}`,
+        },
+        tree: [
+          makeNode({
+            node_id: `docs:d${i}:n1`,
+            title: `Document ${i}`,
+            content: `This document covers authentication and token handling variant ${i}.`,
+          }),
+        ],
+      })
+    );
+    store.load(docs);
+
+    const results = store.searchDocuments("authentication token", { limit: 5 });
+    expect(results.length).toBe(5);
+    // Verify results are sorted by score descending
+    for (let i = 1; i < results.length; i++) {
+      expect(results[i - 1].score).toBeGreaterThanOrEqual(results[i].score);
+    }
+  });
+
+  test("prefix matching returns results within bounds", () => {
+    const store = new DocumentStore();
+    // Create docs with many terms sharing a prefix
+    const docs = Array.from({ length: 10 }, (_, i) =>
+      makeDoc({
+        meta: {
+          doc_id: `docs:pfx${i}`,
+          file_path: `pfx${i}.md`,
+          title: `Prefix Doc ${i}`,
+        },
+        tree: [
+          makeNode({
+            node_id: `docs:pfx${i}:n1`,
+            title: `Prefix Doc ${i}`,
+            content: `configuring configuration configurator configured configurable config`,
+          }),
+        ],
+      })
+    );
+    store.load(docs);
+
+    const results = store.searchDocuments("config", { limit: 3 });
+    expect(results.length).toBe(3);
+    for (const r of results) {
+      expect(r.match_positions.length).toBeLessThanOrEqual(30);
+    }
+  });
+});

@@ -32,6 +32,8 @@ export class DocumentStore {
   // ── Positional inverted index (Pagefind-inspired) ───────────────
   // term → Posting[] (one entry per node the term appears in)
   private index: Map<string, Posting[]> = new Map();
+  // Sorted term list for O(log n) prefix lookups
+  private sortedTerms: string[] = [];
 
   // ── Per-node stats for BM25 length normalization ─────────────────
   private nodeStats: Map<string, NodeStats> = new Map();
@@ -393,6 +395,19 @@ export class DocumentStore {
 
     this.avgNodeLength =
       this.totalNodes > 0 ? totalTokens / this.totalNodes : 0;
+
+    this.sortedTerms = Array.from(this.index.keys()).sort();
+  }
+
+  /** Binary search for the first index where sortedTerms[i] >= prefix */
+  private prefixLowerBound(prefix: string): number {
+    let lo = 0, hi = this.sortedTerms.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (this.sortedTerms[mid] < prefix) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
   }
 
   // ── BM25 scoring (Pagefind v1.1+ alignment) ────────────────────
@@ -502,6 +517,8 @@ export class DocumentStore {
     }
 
     // Accumulate BM25 scores per node
+    const MAX_POSITIONS_PER_NODE = 30;
+    const MAX_PREFIX_TERMS = 50;
     const nodeScores: Map<
       string,
       {
@@ -540,17 +557,27 @@ export class DocumentStore {
           const entry = nodeScores.get(nodeKey)!;
           entry.score += bm25Score;
           entry.matchedTerms.add(term);
-          entry.positions.push(...posting.positions);
+          if (entry.positions.length < MAX_POSITIONS_PER_NODE) {
+            const remaining = MAX_POSITIONS_PER_NODE - entry.positions.length;
+            const slice = posting.positions.length <= remaining
+              ? posting.positions
+              : posting.positions.slice(0, remaining);
+            for (let i = 0; i < slice.length; i++) entry.positions.push(slice[i]);
+          }
         }
       }
 
-      // Prefix matching for partial terms
-      // (Pagefind does this at the chunk level; we iterate the in-memory index)
+      // Prefix matching via sorted term array (O(log n) lookup)
       if (term.length >= 3) {
-        for (const [indexedTerm, pfxPostings] of this.index) {
+        let prefixCount = 0;
+        const start = this.prefixLowerBound(term);
+        for (let ti = start; ti < this.sortedTerms.length; ti++) {
+          const indexedTerm = this.sortedTerms[ti];
+          if (!indexedTerm.startsWith(term)) break;
           if (indexedTerm === term) continue;
-          if (!indexedTerm.startsWith(term)) continue;
+          if (++prefixCount > MAX_PREFIX_TERMS) break;
 
+          const pfxPostings = this.index.get(indexedTerm)!;
           for (const posting of pfxPostings) {
             if (options?.doc_id && posting.doc_id !== options.doc_id) continue;
             if (filterWhitelist && !filterWhitelist.has(posting.doc_id))
@@ -578,7 +605,13 @@ export class DocumentStore {
             const entry = nodeScores.get(nodeKey)!;
             entry.score += bm25Score;
             entry.matchedTerms.add(term);
-            entry.positions.push(...posting.positions);
+            if (entry.positions.length < MAX_POSITIONS_PER_NODE) {
+              const remaining = MAX_POSITIONS_PER_NODE - entry.positions.length;
+              const slice = posting.positions.length <= remaining
+                ? posting.positions
+                : posting.positions.slice(0, remaining);
+              for (let i = 0; i < slice.length; i++) entry.positions.push(slice[i]);
+            }
           }
         }
       }
@@ -605,10 +638,16 @@ export class DocumentStore {
       }
     }
 
-    // Convert to SearchResult objects
+    // Sort by score and only convert top N to full SearchResult objects
+    const limit = options?.limit || 20;
+    const scored = Array.from(nodeScores.values());
+    scored.sort((a, b) => b.score - a.score);
+    const topN = scored.slice(0, limit);
+    nodeScores.clear();
+
     const results: SearchResult[] = [];
 
-    for (const [, entry] of nodeScores) {
+    for (const entry of topN) {
       const doc = this.docs.get(entry.doc_id);
       if (!doc) continue;
 
@@ -639,8 +678,7 @@ export class DocumentStore {
       });
     }
 
-    results.sort((a, b) => b.score - a.score);
-    return results.slice(0, options?.limit || 20);
+    return results;
   }
 
   // ── Catalog with facet counts (Pagefind filter UI equivalent) ───
