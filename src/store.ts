@@ -22,6 +22,9 @@ import type {
   RankingParams,
   FilterIndex,
   FacetCounts,
+  GrepOptions,
+  GrepHit,
+  GrepOutcome,
 } from "./types";
 import { DEFAULT_RANKING } from "./types";
 import { extractGlossaryEntries } from "./indexer";
@@ -897,6 +900,81 @@ export class DocumentStore {
     return { doc_id: entry.doc_id, node, facets: doc.meta.facets };
   }
 
+  // ── Literal / regex scan over indexed content ─────────────────────
+  //
+  // Complement to searchDocuments (BM25). Use when the agent has an
+  // exact string, symbol, or regex to locate and doesn't want stemming
+  // or glossary expansion interfering.
+  //
+  // ReDoS guard: the scan honors a wall-clock budget and a per-line
+  // match cap. A malicious or pathological pattern cannot hang the
+  // server — it simply returns early with aborted=true.
+
+  grepDocuments(opts: GrepOptions): GrepOutcome {
+    const timeBudget = opts.time_budget_ms ?? 500;
+    const limit = opts.limit ?? 50;
+    const context = Math.max(0, Math.min(5, opts.context ?? 1));
+    const deadline = Date.now() + timeBudget;
+
+    const re = compileGrepRegex(opts);
+    const globMatcher = opts.path_glob ? new Bun.Glob(opts.path_glob) : null;
+    const filterWhitelist = opts.filters && Object.keys(opts.filters).length > 0
+      ? this.resolveFilters(opts.filters)
+      : null;
+
+    const hits: GrepHit[] = [];
+    let docsScanned = 0;
+    let nodesScanned = 0;
+    let aborted = false;
+    let truncated = false;
+    const CLOCK_CHECK_EVERY = 256; // amortize Date.now() calls
+    let linesSinceCheck = 0;
+
+    outer: for (const doc of this.docs.values()) {
+      if (opts.doc_id && doc.meta.doc_id !== opts.doc_id) continue;
+      if (filterWhitelist && !filterWhitelist.has(doc.meta.doc_id)) continue;
+      if (globMatcher && !globMatcher.match(doc.meta.file_path)) continue;
+      docsScanned++;
+
+      for (const node of doc.tree) {
+        nodesScanned++;
+        if (!node.content) continue;
+        const lines = node.content.split("\n");
+
+        for (let i = 0; i < lines.length; i++) {
+          if (++linesSinceCheck >= CLOCK_CHECK_EVERY) {
+            linesSinceCheck = 0;
+            if (Date.now() > deadline) {
+              aborted = true;
+              break outer;
+            }
+          }
+
+          if (!re.test(lines[i])) continue;
+
+          hits.push({
+            doc_id: doc.meta.doc_id,
+            file_path: doc.meta.file_path,
+            node_id: node.node_id,
+            node_title: node.title,
+            // node.line_start is the heading line; content begins on the next
+            line_no: node.line_start + 1 + i,
+            line: lines[i],
+            context_before: lines.slice(Math.max(0, i - context), i),
+            context_after: lines.slice(i + 1, i + 1 + context),
+          });
+
+          if (hits.length >= limit) {
+            truncated = true;
+            break outer;
+          }
+        }
+      }
+    }
+
+    return { hits, truncated, aborted, docs_scanned: docsScanned, nodes_scanned: nodesScanned };
+  }
+
   // ── Reference map ─────────────────────────────────────────────────
 
   private buildRefMap(): void {
@@ -986,6 +1064,37 @@ export class DocumentStore {
   hasDocument(doc_id: string): boolean {
     return this.docs.has(doc_id);
   }
+}
+
+// ── Grep regex compilation ──────────────────────────────────────────
+//
+// Wraps RegExp construction so the caller gets a clear error for invalid
+// patterns and so we can apply cheap static guards before running the
+// regex against the corpus.
+
+// Cheap static guards against the most common catastrophic-backtracking shapes.
+// Not exhaustive (static ReDoS detection is undecidable in general), but blocks
+// the patterns most likely to hang the scan: lookarounds and a group that
+// contains a quantifier and is itself quantified, e.g. (a+)+ or (a*b)+.
+const DANGEROUS_PATTERN =
+  /(\(\?[=!])|(\(\?<[=!])|(\([^)]*[*+?}][^)]*\)\s*[*+{?])/;
+
+function compileGrepRegex(opts: GrepOptions): RegExp {
+  const src = opts.regex ? opts.pattern : escapeRegex(opts.pattern);
+  if (opts.regex && DANGEROUS_PATTERN.test(opts.pattern)) {
+    throw new Error(
+      "Pattern contains constructs that can cause catastrophic backtracking (nested quantifiers or lookarounds). Use a simpler regex, or pass regex=false for literal matching."
+    );
+  }
+  try {
+    return new RegExp(src, opts.case_insensitive ? "i" : "");
+  } catch (err: any) {
+    throw new Error(`Invalid regex: ${err.message}`);
+  }
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // ── Tokenization ─────────────────────────────────────────────────────

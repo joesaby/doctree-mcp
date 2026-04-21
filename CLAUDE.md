@@ -77,10 +77,11 @@ This enables bidirectional query expansion: searching "CLI" also matches "comman
 
 ### Core read tools (always available)
 1. **`search_documents`** — BM25 keyword search with facet filters, glossary expansion, and auto-inlined top results. Works across markdown, CSV, and JSONL.
-2. **`get_tree`** — Hierarchical outline (no content) for agent reasoning
-3. **`get_node_content`** — Retrieve full text of specific sections by node ID
-4. **`navigate_tree`** — Get a section and all descendants in one call
-5. **`lookup_row`** — O(1) exact key lookup for structured data rows (CSV/JSONL)
+2. **`grep_documents`** — Literal/regex scan over indexed content. Use when the exact string is known (error codes, flags, symbols) and BM25 fuzziness would get in the way. Rejects nested-quantifier / lookaround regexes as a ReDoS guard; honors a wall-clock budget.
+3. **`get_tree`** — Hierarchical outline (no content) for agent reasoning
+4. **`get_node_content`** — Retrieve full text of specific sections by node ID
+5. **`navigate_tree`** — Get a section and all descendants in one call
+6. **`lookup_row`** — O(1) exact key lookup for structured data rows (CSV/JSONL)
 
 ### Deprecated read tools (still functional, superseded by core tools)
 - **`list_documents`** — Use `search_documents` with filters instead
@@ -88,9 +89,9 @@ This enables bidirectional query expansion: searching "CLI" also matches "comman
 - **`find_symbol`** — `search_documents` already boosts title matches at 3x
 
 ### Wiki curation tools (opt-in: `WIKI_WRITE=1`)
-6. **`find_similar`** — BM25 duplicate detection before writing
-7. **`draft_wiki_entry`** — Structural scaffold with inferred frontmatter
-8. **`write_wiki_entry`** — Validated write with path containment and duplicate guards
+7. **`find_similar`** — BM25 duplicate detection before writing
+8. **`draft_wiki_entry`** — Structural scaffold with inferred frontmatter
+9. **`write_wiki_entry`** — Validated write with path containment and duplicate guards
 
 ## Code Conventions
 
