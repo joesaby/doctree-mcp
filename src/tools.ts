@@ -10,6 +10,36 @@ import { z } from "zod";
 import type { DocumentStore } from "./store";
 import { formatSearchResults } from "./search-formatter";
 import type { WikiOptions } from "./curator";
+import type { GrepOutcome } from "./types";
+
+export function formatGrepResult(outcome: GrepOutcome, pattern: string): string {
+  if (outcome.hits.length === 0) {
+    const suffix = outcome.aborted
+      ? " (scan aborted by time budget — narrow the pattern or use filters)"
+      : "";
+    return `No matches for "${pattern}" across ${outcome.docs_scanned} document(s)${suffix}.\n\nIf this was a literal search, try search_documents("${pattern}") — stemming or glossary expansion may rescue terms that don't match literally.`;
+  }
+
+  const blocks = outcome.hits.map((h) => {
+    const header = `${h.file_path}:${h.line_no}  [${h.doc_id} → ${h.node_id}]  ${h.node_title}`;
+    const before = h.context_before
+      .map((l, i) => `  ${h.line_no - h.context_before.length + i} | ${l}`)
+      .join("\n");
+    const match = `> ${h.line_no} | ${h.line}`;
+    const after = h.context_after
+      .map((l, i) => `  ${h.line_no + 1 + i} | ${l}`)
+      .join("\n");
+    return [header, before, match, after].filter(Boolean).join("\n");
+  });
+
+  const notes: string[] = [];
+  if (outcome.truncated) notes.push("result limit hit — raise `limit` or narrow `path_glob`/`filters`");
+  if (outcome.aborted) notes.push("scan aborted by time budget — simplify the pattern");
+
+  const summary = `Found ${outcome.hits.length} match(es) for "${pattern}" across ${outcome.docs_scanned} doc(s) / ${outcome.nodes_scanned} section(s)${notes.length ? ` — ${notes.join("; ")}` : ""}.`;
+
+  return `${summary}\n\n${blocks.join("\n\n")}\n\nEach hit carries a node_id — call get_node_content(doc_id, [node_id]) or navigate_tree(doc_id, node_id) to read the full section.`;
+}
 
 // ── Rich text formatters for curation tool output ─────────────────
 
@@ -202,6 +232,60 @@ export function registerTools(
           },
         ],
       };
+    }
+  );
+
+  // ── Tool 2b: grep_documents ────────────────────────────────────────
+  server.tool(
+    "grep_documents",
+    "Literal or regex match across indexed document content — the grep-style counterpart to search_documents. Use this when you already know the EXACT string, symbol, error code, CLI flag, or config key you are looking for and don't want BM25 ranking, stemming, or glossary expansion in the way. Returns file path, line number, node_id, and matching lines with context. Fall back to search_documents for conceptual queries (e.g. 'how do we rotate tokens') where wording varies.",
+    {
+      pattern: z
+        .string()
+        .min(1)
+        .describe("Literal string by default; set regex=true to treat as a RegExp source"),
+      regex: z
+        .boolean()
+        .default(false)
+        .describe("If true, treat pattern as a regex. Nested quantifiers and lookarounds are rejected to prevent ReDoS."),
+      case_insensitive: z.boolean().default(false),
+      doc_id: z.string().optional().describe("Limit scan to one document"),
+      path_glob: z
+        .string()
+        .optional()
+        .describe("Glob over the file_path, e.g. '**/runbooks/**' or 'auth/*.md'"),
+      filters: z
+        .record(z.union([z.string(), z.array(z.string())]))
+        .optional()
+        .describe('Same facet filters as search_documents, e.g. { "type": "runbook" }'),
+      context: z
+        .number()
+        .min(0)
+        .max(5)
+        .default(1)
+        .describe("Lines of context on each side of a match"),
+      limit: z.number().min(1).max(200).default(50),
+    },
+    async ({ pattern, regex, case_insensitive, doc_id, path_glob, filters, context, limit }) => {
+      try {
+        const outcome = store.grepDocuments({
+          pattern,
+          regex,
+          case_insensitive,
+          doc_id,
+          path_glob,
+          filters,
+          context,
+          limit,
+        });
+        return {
+          content: [{ type: "text" as const, text: formatGrepResult(outcome, pattern) }],
+        };
+      } catch (err: any) {
+        return {
+          content: [{ type: "text" as const, text: `grep_documents error: ${err.message}` }],
+        };
+      }
     }
   );
 

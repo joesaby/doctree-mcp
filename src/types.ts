@@ -151,6 +151,48 @@ export interface SearchResult {
   facets: Record<string, string[]>; // document's facet values
 }
 
+// ── Literal / regex grep over indexed content ───────────────────────
+
+/**
+ * Options for literal or regex scanning over indexed node content.
+ *
+ * Complementary to BM25 search: grep is the right tool when the agent
+ * already knows the exact string, symbol, error code, or regex to find
+ * and doesn't want stemming/glossary expansion interfering.
+ */
+export interface GrepOptions {
+  pattern: string;
+  regex?: boolean; // if false, pattern is matched literally
+  case_insensitive?: boolean;
+  doc_id?: string;
+  path_glob?: string; // e.g. "**/runbooks/**"
+  filters?: Record<string, string | string[]>;
+  context?: number; // lines of context on each side (0-5)
+  limit?: number;
+  /** Wall-clock budget in ms before the scan aborts (ReDoS guard). */
+  time_budget_ms?: number;
+}
+
+/** A single match produced by grepDocuments. */
+export interface GrepHit {
+  doc_id: string;
+  file_path: string;
+  node_id: string;
+  node_title: string;
+  line_no: number; // approximate absolute line in source file
+  line: string; // matching line
+  context_before: string[];
+  context_after: string[];
+}
+
+export interface GrepOutcome {
+  hits: GrepHit[];
+  truncated: boolean; // hit the limit
+  aborted: boolean; // hit the time budget
+  docs_scanned: number;
+  nodes_scanned: number;
+}
+
 // ── Ranking configuration (Pagefind-style configurable knobs) ───────
 
 /**
