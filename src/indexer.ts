@@ -30,6 +30,9 @@ interface ParseState {
   content_buffer: string[];
   node_counter: number;
   doc_id: string;
+  /** 1-based line of the most recently located heading — the next heading
+   *  search starts after it so repeated heading titles get distinct lines. */
+  last_heading_line: number;
 }
 
 function createParseState(doc_id: string): ParseState {
@@ -40,6 +43,7 @@ function createParseState(doc_id: string): ParseState {
     content_buffer: [],
     node_counter: 0,
     doc_id,
+    last_heading_line: 0,
   };
 }
 
@@ -134,9 +138,14 @@ export function buildTree(markdown: string, doc_id: string): TreeNode[] {
           content: "",
           summary: "",
           word_count: 0,
-          line_start: findHeadingLine(lines, stripHtml(children), 0),
+          line_start: findHeadingLine(
+            lines,
+            stripHtml(children),
+            state.last_heading_line
+          ),
           line_end: -1,
         };
+        state.last_heading_line = node.line_start;
 
         if (parent_id) {
           const parent = state.nodes.find((n) => n.node_id === parent_id);
@@ -335,6 +344,10 @@ const RESERVED_FRONTMATTER_KEYS = new Set([
   "slug",
   "draft",
   "date",
+  // Capture metadata (e.g. from web-clipping tools) — provenance, not taxonomy
+  "source_url",
+  "source_title",
+  "captured_at",
 ]);
 
 function extractFacets(frontmatter: Frontmatter): Record<string, string[]> {
