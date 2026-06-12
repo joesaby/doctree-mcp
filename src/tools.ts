@@ -10,7 +10,26 @@ import { z } from "zod";
 import type { DocumentStore } from "./store";
 import { formatSearchResults } from "./search-formatter";
 import type { WikiOptions } from "./curator";
-import type { GrepOutcome } from "./types";
+import type { GrepOutcome, FacetCounts } from "./types";
+
+/** Compact facet-count rendering for list_documents output. */
+function formatFacetCounts(counts: FacetCounts, maxValuesPerKey = 8): string {
+  const keys = Object.keys(counts);
+  if (keys.length === 0) return "";
+  const lines = keys.sort().map((key) => {
+    const entries = Object.entries(counts[key]).sort((a, b) => b[1] - a[1]);
+    const shown = entries
+      .slice(0, maxValuesPerKey)
+      .map(([val, n]) => `${val} (${n})`)
+      .join(", ");
+    const more =
+      entries.length > maxValuesPerKey
+        ? `, +${entries.length - maxValuesPerKey} more`
+        : "";
+    return `  ${key}: ${shown}${more}`;
+  });
+  return `\n\nFacets in this result set (use as \`filters\` in search_documents/list_documents):\n${lines.join("\n")}`;
+}
 
 export function formatGrepResult(outcome: GrepOutcome, pattern: string): string {
   if (outcome.hits.length === 0) {
@@ -152,7 +171,7 @@ export function registerTools(
   // ── Tool 1: list_documents ─────────────────────────────────────────
   server.tool(
     "list_documents",
-    "List all indexed markdown documents. Filter by tag or keyword in title/path. Returns document metadata without content — use get_tree to explore a specific document's structure.",
+    "List indexed documents and discover the available filter facets. Filter by tag, keyword, collection, or facet values. Returns document metadata (no content) plus facet counts for the result set — call this first when you need to know which facets/values exist before filtering search_documents.",
     {
       query: z
         .string()
@@ -162,6 +181,14 @@ export function registerTools(
         .string()
         .optional()
         .describe("Filter documents by frontmatter tag"),
+      collection: z
+        .string()
+        .optional()
+        .describe("Limit to one collection (e.g. 'docs' or a multi-root collection name)"),
+      filters: z
+        .record(z.union([z.string(), z.array(z.string())]))
+        .optional()
+        .describe('Facet filters, same shape as search_documents. Example: { "type": "runbook" }'),
       limit: z
         .number()
         .min(1)
@@ -174,8 +201,8 @@ export function registerTools(
         .default(0)
         .describe("Pagination offset"),
     },
-    async ({ query, tag, limit, offset }) => {
-      const result = store.listDocuments({ query, tag, limit, offset });
+    async ({ query, tag, collection, filters, limit, offset }) => {
+      const result = store.listDocuments({ query, tag, collection, filters, limit, offset });
 
       const summary = result.documents
         .map(
@@ -184,11 +211,13 @@ export function registerTools(
         )
         .join("\n\n");
 
+      const facetBlock = formatFacetCounts(result.facet_counts);
+
       return {
         content: [
           {
             type: "text" as const,
-            text: `Found ${result.total} documents (showing ${offset + 1}-${Math.min(offset + limit, result.total)}):\n\n${summary}\n\nUse get_tree with a doc_id to explore a document's section hierarchy.`,
+            text: `Found ${result.total} documents (showing ${Math.min(offset + 1, result.total)}-${Math.min(offset + limit, result.total)}):\n\n${summary}${facetBlock}\n\nUse get_tree with a doc_id to explore a document's section hierarchy.`,
           },
         ],
       };
@@ -207,6 +236,10 @@ export function registerTools(
         .string()
         .optional()
         .describe("Limit search to a specific document"),
+      collection: z
+        .string()
+        .optional()
+        .describe("Limit search to one collection (e.g. 'docs' or a multi-root collection name — see list_documents facet counts)"),
       filters: z
         .record(z.union([z.string(), z.array(z.string())]))
         .optional()
@@ -220,8 +253,8 @@ export function registerTools(
         .default(15)
         .describe("Max results"),
     },
-    async ({ query, doc_id, filters, limit }) => {
-      const results = store.searchDocuments(query, { limit, doc_id, filters });
+    async ({ query, doc_id, collection, filters, limit }) => {
+      const results = store.searchDocuments(query, { limit, doc_id, collection, filters });
       const formatted = formatSearchResults(results, store, query);
 
       return {

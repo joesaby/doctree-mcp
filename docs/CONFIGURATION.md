@@ -93,7 +93,7 @@ category: auth       # any domain-specific grouping
 
 ### Reserved frontmatter keys
 
-These are used internally and not exposed as filter facets: `title`, `description`, `layout`, `permalink`, `slug`, `draft`, `date`.
+These are used internally and not exposed as filter facets: `title`, `description`, `layout`, `permalink`, `slug`, `draft`, `date`, `source_url`, `source_title`, `captured_at`.
 
 ### Auto-inferred `type` from directory structure
 

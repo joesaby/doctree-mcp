@@ -175,6 +175,31 @@ Six seven eight.
       expect(node.line_end).not.toBe(-1);
     }
   });
+
+  test("repeated heading titles get distinct ascending line_start", () => {
+    // "## Notes" appears three times — the heading search must resume after
+    // the previous match instead of restarting at line 0 each time.
+    const body = [
+      "# Guide", // line 1
+      "", // 2
+      "## Notes", // 3
+      "", // 4
+      "First notes.", // 5
+      "", // 6
+      "## Notes", // 7
+      "", // 8
+      "Second notes.", // 9
+      "", // 10
+      "## Notes", // 11
+      "", // 12
+      "Third notes.", // 13
+    ].join("\n");
+    const nodes = buildTree(body, "test:doc");
+
+    const notes = nodes.filter((n) => n.title === "Notes");
+    expect(notes.length).toBe(3);
+    expect(notes.map((n) => n.line_start)).toEqual([3, 7, 11]);
+  });
 });
 
 // ── indexFile integration tests ─────────────────────────────────────

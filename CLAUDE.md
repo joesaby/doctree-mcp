@@ -99,7 +99,7 @@ This enables bidirectional query expansion: searching "CLI" also matches "comman
 - No classes in indexer (functional), class-based store (`DocumentStore`)
 - Bun test runner (`bun test`) with `.test.ts` files in `tests/`
 - Comments reference design influences: PageIndex, Pagefind, Bun.markdown
-- Reserved frontmatter keys (not used as facets): title, description, layout, permalink, slug, draft, date
+- Reserved frontmatter keys (not used as facets): title, description, layout, permalink, slug, draft, date, source_url, source_title, captured_at
 
 ## Frontmatter Best Practices for Indexed Docs
 
